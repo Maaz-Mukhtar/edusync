@@ -11,7 +11,10 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "test:perf": "npx playwright test tests/performance.spec.ts",
+    "test:perf:ui": "npx playwright test tests/performance.spec.ts --ui",
+    "benchmark": "bash scripts/benchmark-branches.sh"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -55,6 +58,7 @@
     "zustand": "^5.0.9"
   },
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
