@@ -108,7 +108,7 @@ A modern, multi-tenant SaaS platform for managing Pakistani schools. Built with 
 | Role | Email | Password |
 |------|-------|----------|
 | Admin | admin@citygrammar.edu.pk | password123 |
-| Teacher | fatima.khan@citygrammar.edu.pk | password123 |
+| Teacher | fatima.ali@citygrammar.edu.pk | password123 |
 | Student | ali.ahmed@student.citygrammar.edu.pk | password123 |
 | Parent | parent.ahmed0@gmail.com | password123 |
 
