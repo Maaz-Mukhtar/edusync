@@ -1,0 +1,470 @@
+// EduSync - School Management System
+// Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==================== ENUMS ====================
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  TEACHER
+  STUDENT
+  PARENT
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum AssessmentType {
+  TEST
+  QUIZ
+  ASSIGNMENT
+  EXAM
+}
+
+enum FeeFrequency {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+  ONE_TIME
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+// ==================== CORE MODELS ====================
+
+model School {
+  id        String   @id @default(cuid())
+  name      String
+  subdomain String   @unique
+  address   String?
+  phone     String?
+  email     String?
+  logo      String?
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         User[]
+  classes       Class[]
+  subjects      Subject[]
+  feeStructures FeeStructure[]
+  announcements Announcement[]
+  academicYears AcademicYear[]
+
+  @@index([subdomain])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  schoolId     String
+  email        String?
+  phone        String?
+  passwordHash String?
+  role         UserRole
+  firstName    String
+  lastName     String
+  avatar       String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  school         School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentProfile StudentProfile?
+  teacherProfile TeacherProfile?
+  parentProfile  ParentProfile?
+  accounts       Account[]
+  sessions       Session[]
+
+  @@unique([schoolId, email])
+  @@unique([schoolId, phone])
+  @@index([schoolId])
+  @@index([role])
+}
+
+// ==================== NEXTAUTH MODELS ====================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ==================== PROFILE MODELS ====================
+
+model StudentProfile {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  sectionId     String
+  rollNumber    String?
+  dateOfBirth   DateTime?
+  admissionDate DateTime?
+  bloodGroup    String?
+  address       String?
+
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  section     Section            @relation(fields: [sectionId], references: [id])
+  parents     ParentStudent[]
+  attendances Attendance[]
+  results     AssessmentResult[]
+  feeInvoices FeeInvoice[]
+  insights    StudentInsight[]
+
+  @@index([sectionId])
+}
+
+model TeacherProfile {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  employeeId     String?
+  qualification  String?
+  joinDate       DateTime?
+  specialization String?
+
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sections         SectionTeacher[]
+  subjectsTaught   TeacherSubject[]
+  attendancesTaken Attendance[]
+  assessments      Assessment[]
+}
+
+model ParentProfile {
+  id           String  @id @default(cuid())
+  userId       String  @unique
+  occupation   String?
+  relationship String?
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  children ParentStudent[]
+}
+
+model ParentStudent {
+  id        String @id @default(cuid())
+  parentId  String
+  studentId String
+
+  parent  ParentProfile  @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([parentId, studentId])
+  @@index([parentId])
+  @@index([studentId])
+}
+
+// ==================== ACADEMIC STRUCTURE ====================
+
+model AcademicYear {
+  id        String   @id @default(cuid())
+  schoolId  String
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  isCurrent Boolean  @default(false)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  terms  Term[]
+
+  @@unique([schoolId, name])
+  @@index([schoolId])
+}
+
+model Term {
+  id             String   @id @default(cuid())
+  academicYearId String
+  name           String
+  startDate      DateTime
+  endDate        DateTime
+
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  assessments  Assessment[]
+
+  @@index([academicYearId])
+}
+
+model Class {
+  id           String @id @default(cuid())
+  schoolId     String
+  name         String
+  displayOrder Int    @default(0)
+
+  school        School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  sections      Section[]
+  feeStructures FeeStructure[]
+
+  @@unique([schoolId, name])
+  @@index([schoolId])
+}
+
+model Section {
+  id       String @id @default(cuid())
+  classId  String
+  name     String
+  capacity Int?
+
+  class       Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
+  students    StudentProfile[]
+  teachers    SectionTeacher[]
+  timetable   TimetableSlot[]
+  attendances Attendance[]
+  assessments Assessment[]
+
+  @@unique([classId, name])
+  @@index([classId])
+}
+
+model Subject {
+  id       String  @id @default(cuid())
+  schoolId String
+  name     String
+  code     String?
+  color    String?
+
+  school      School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  teachers    TeacherSubject[]
+  timetable   TimetableSlot[]
+  assessments Assessment[]
+
+  @@unique([schoolId, name])
+  @@index([schoolId])
+}
+
+// ==================== JUNCTION TABLES ====================
+
+model SectionTeacher {
+  id             String  @id @default(cuid())
+  sectionId      String
+  teacherId      String
+  isClassTeacher Boolean @default(false)
+
+  section Section        @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  teacher TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([sectionId, teacherId])
+  @@index([sectionId])
+  @@index([teacherId])
+}
+
+model TeacherSubject {
+  id        String @id @default(cuid())
+  teacherId String
+  subjectId String
+
+  teacher TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subject Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, subjectId])
+  @@index([teacherId])
+  @@index([subjectId])
+}
+
+// ==================== TIMETABLE ====================
+
+model TimetableSlot {
+  id        String  @id @default(cuid())
+  sectionId String
+  subjectId String
+  teacherId String?
+  dayOfWeek Int // 0-6 (Sunday-Saturday)
+  startTime String // "08:00"
+  endTime   String // "08:45"
+  room      String?
+
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@index([sectionId])
+  @@index([dayOfWeek])
+}
+
+// ==================== ATTENDANCE ====================
+
+model Attendance {
+  id        String           @id @default(cuid())
+  studentId String
+  sectionId String
+  date      DateTime         @db.Date
+  status    AttendanceStatus
+  remarks   String?
+  markedBy  String?
+  markedAt  DateTime         @default(now())
+
+  student StudentProfile  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  section Section         @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  teacher TeacherProfile? @relation(fields: [markedBy], references: [id])
+
+  @@unique([studentId, date])
+  @@index([sectionId, date])
+  @@index([studentId])
+}
+
+// ==================== ASSESSMENTS ====================
+
+model Assessment {
+  id          String         @id @default(cuid())
+  sectionId   String
+  subjectId   String
+  termId      String?
+  createdById String
+  title       String
+  type        AssessmentType
+  totalMarks  Float
+  date        DateTime
+  topics      String[]
+  description String?
+  createdAt   DateTime       @default(now())
+
+  section   Section            @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject   Subject            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  term      Term?              @relation(fields: [termId], references: [id])
+  createdBy TeacherProfile     @relation(fields: [createdById], references: [id])
+  results   AssessmentResult[]
+
+  @@index([sectionId])
+  @@index([subjectId])
+  @@index([date])
+}
+
+model AssessmentResult {
+  id            String  @id @default(cuid())
+  assessmentId  String
+  studentId     String
+  marksObtained Float
+  grade         String?
+  remarks       String?
+  topicScores   Json?
+
+  assessment Assessment     @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  student    StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, studentId])
+  @@index([studentId])
+  @@index([assessmentId])
+}
+
+// ==================== FEE MANAGEMENT ====================
+
+model FeeStructure {
+  id        String       @id @default(cuid())
+  schoolId  String
+  classId   String?
+  name      String
+  amount    Float
+  frequency FeeFrequency
+  dueDay    Int?
+
+  school   School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class    Class?       @relation(fields: [classId], references: [id])
+  invoices FeeInvoice[]
+
+  @@index([schoolId])
+  @@index([classId])
+}
+
+model FeeInvoice {
+  id             String        @id @default(cuid())
+  studentId      String
+  feeStructureId String
+  amount         Float
+  dueDate        DateTime
+  paidDate       DateTime?
+  status         InvoiceStatus @default(PENDING)
+  paymentMethod  String?
+  transactionId  String?
+  remarks        String?
+  createdAt      DateTime      @default(now())
+
+  student      StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  feeStructure FeeStructure   @relation(fields: [feeStructureId], references: [id])
+
+  @@index([studentId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+// ==================== COMMUNICATION ====================
+
+model Announcement {
+  id        String    @id @default(cuid())
+  schoolId  String
+  title     String
+  content   String    @db.Text
+  audience  String[]
+  priority  String    @default("normal")
+  publishAt DateTime  @default(now())
+  expiresAt DateTime?
+  createdBy String
+  createdAt DateTime  @default(now())
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+  @@index([publishAt])
+}
+
+// ==================== AI FEATURES ====================
+
+model StudentInsight {
+  id           String   @id @default(cuid())
+  studentId    String
+  subjectId    String
+  weakTopics   String[]
+  strongTopics String[]
+  trend        String
+  percentile   Float?
+  aiSummary    String?  @db.Text
+  generatedAt  DateTime @default(now())
+
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@index([generatedAt])
+}
