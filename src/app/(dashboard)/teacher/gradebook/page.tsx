@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import useSWR from "swr";
+import { fetcher, swrConfig } from "@/lib/swr";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -80,34 +82,24 @@ interface ClassesData {
 }
 
 export default function TeacherGradebookPage() {
-  const [classesData, setClassesData] = useState<ClassesData | null>(null);
+  // Fetch sections and subjects with SWR
+  const { data: classesData, isLoading: loading } = useSWR<ClassesData>(
+    "/api/teacher/classes",
+    fetcher,
+    swrConfig
+  );
+
   const [gradebookData, setGradebookData] = useState<GradebookData | null>(null);
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("all");
-  const [loading, setLoading] = useState(true);
   const [loadingGradebook, setLoadingGradebook] = useState(false);
 
-  // Fetch sections and subjects
+  // Set initial section when data loads
   useEffect(() => {
-    async function fetchClasses() {
-      try {
-        const response = await fetch("/api/teacher/classes");
-        if (response.ok) {
-          const result = await response.json();
-          setClassesData(result);
-          if (result.sections.length > 0) {
-            setSelectedSectionId(result.sections[0].id);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to fetch classes:", error);
-      } finally {
-        setLoading(false);
-      }
+    if (!selectedSectionId && classesData?.sections && classesData.sections.length > 0) {
+      setSelectedSectionId(classesData.sections[0].id);
     }
-
-    fetchClasses();
-  }, []);
+  }, [classesData, selectedSectionId]);
 
   // Fetch gradebook data
   const fetchGradebook = useCallback(async () => {

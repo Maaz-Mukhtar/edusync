@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
+import useSWR from "swr";
+import { fetcher, swrConfig } from "@/lib/swr";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -66,11 +68,22 @@ const statusConfig: Record<AttendanceStatus, { icon: typeof CheckCircle; color: 
   EXCUSED: { icon: AlertCircle, color: "text-blue-600", bg: "bg-blue-100 hover:bg-blue-200" },
 };
 
+interface SectionsResponse {
+  sections: Section[];
+}
+
 export default function TeacherAttendancePage() {
   const searchParams = useSearchParams();
   const initialSectionId = searchParams.get("section");
 
-  const [sections, setSections] = useState<Section[]>([]);
+  // Fetch sections with SWR
+  const { data: sectionsData, isLoading: loading } = useSWR<SectionsResponse>(
+    "/api/teacher/attendance",
+    fetcher,
+    swrConfig
+  );
+  const sections = sectionsData?.sections || [];
+
   const [selectedSectionId, setSelectedSectionId] = useState<string>(initialSectionId || "");
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split("T")[0]
@@ -79,38 +92,23 @@ export default function TeacherAttendancePage() {
   const [localRecords, setLocalRecords] = useState<Map<string, { status: AttendanceStatus; remarks: string }>>(
     new Map()
   );
-  const [loading, setLoading] = useState(true);
+  const [loadingAttendance, setLoadingAttendance] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Fetch sections
+  // Set initial section when data loads
   useEffect(() => {
-    async function fetchSections() {
-      try {
-        const response = await fetch("/api/teacher/attendance");
-        if (response.ok) {
-          const result = await response.json();
-          setSections(result.sections);
-          if (!selectedSectionId && result.sections.length > 0) {
-            setSelectedSectionId(initialSectionId || result.sections[0].id);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to fetch sections:", error);
-      } finally {
-        setLoading(false);
-      }
+    if (!selectedSectionId && sections.length > 0) {
+      setSelectedSectionId(initialSectionId || sections[0].id);
     }
-
-    fetchSections();
-  }, [initialSectionId, selectedSectionId]);
+  }, [sections, selectedSectionId, initialSectionId]);
 
   // Fetch attendance for selected section and date
   const fetchAttendance = useCallback(async () => {
     if (!selectedSectionId || !selectedDate) return;
 
-    setLoading(true);
+    setLoadingAttendance(true);
     setError(null);
 
     try {
@@ -134,7 +132,7 @@ export default function TeacherAttendancePage() {
       console.error("Failed to fetch attendance:", error);
       setError("Failed to load attendance data");
     } finally {
-      setLoading(false);
+      setLoadingAttendance(false);
     }
   }, [selectedSectionId, selectedDate]);
 

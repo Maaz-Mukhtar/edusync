@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import useSWR from "swr";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui/table";
 import { Users, BookOpen, Star } from "lucide-react";
 import { getInitials } from "@/lib/utils";
+import { fetcher, swrConfig } from "@/lib/swr";
 
 interface Student {
   id: string;
@@ -58,29 +60,10 @@ interface ClassesData {
 }
 
 export default function TeacherClassesPage() {
-  const [data, setData] = useState<ClassesData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading } = useSWR<ClassesData>("/api/teacher/classes", fetcher, swrConfig);
   const [selectedSection, setSelectedSection] = useState<Section | null>(null);
 
-  useEffect(() => {
-    async function fetchClasses() {
-      try {
-        const response = await fetch("/api/teacher/classes");
-        if (response.ok) {
-          const result = await response.json();
-          setData(result);
-        }
-      } catch (error) {
-        console.error("Failed to fetch classes:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchClasses();
-  }, []);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <div>

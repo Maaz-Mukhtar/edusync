@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import useSWR from "swr";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import Link from "next/link";
+import { fetcher, swrConfig } from "@/lib/swr";
 
 interface DashboardData {
   stats: {
@@ -51,28 +52,13 @@ interface DashboardData {
 }
 
 export default function TeacherDashboard() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading } = useSWR<DashboardData>(
+    "/api/teacher/dashboard",
+    fetcher,
+    swrConfig
+  );
 
-  useEffect(() => {
-    async function fetchDashboard() {
-      try {
-        const response = await fetch("/api/teacher/dashboard");
-        if (response.ok) {
-          const result = await response.json();
-          setData(result);
-        }
-      } catch (error) {
-        console.error("Failed to fetch dashboard:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchDashboard();
-  }, []);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <div>

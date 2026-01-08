@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
+import useSWR from "swr";
+import { fetcher, swrConfig } from "@/lib/swr";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -95,11 +97,33 @@ const typeColors: Record<AssessmentType, string> = {
   EXAM: "bg-red-100 text-red-800",
 };
 
+interface AssessmentsResponse {
+  assessments: Assessment[];
+}
+
+interface ClassesResponse {
+  sections: Section[];
+  subjects: Subject[];
+}
+
 export default function TeacherAssessmentsPage() {
-  const [assessments, setAssessments] = useState<Assessment[]>([]);
-  const [sections, setSections] = useState<Section[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Fetch assessments and classes with SWR
+  const { data: assessmentsData, isLoading: loadingAssessments, mutate: mutateAssessments } = useSWR<AssessmentsResponse>(
+    "/api/teacher/assessments",
+    fetcher,
+    swrConfig
+  );
+  const { data: classesData, isLoading: loadingClasses } = useSWR<ClassesResponse>(
+    "/api/teacher/classes",
+    fetcher,
+    swrConfig
+  );
+
+  const loading = loadingAssessments || loadingClasses;
+  const assessments = assessmentsData?.assessments || [];
+  const sections = classesData?.sections || [];
+  const subjects = classesData?.subjects || [];
+
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -120,55 +144,32 @@ export default function TeacherAssessmentsPage() {
     description: "",
   });
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const [assessmentsRes, classesRes] = await Promise.all([
-          fetch("/api/teacher/assessments"),
-          fetch("/api/teacher/classes"),
-        ]);
-
-        if (assessmentsRes.ok) {
-          const data = await assessmentsRes.json();
-          setAssessments(data.assessments);
-        }
-
-        if (classesRes.ok) {
-          const data = await classesRes.json();
-          setSections(data.sections);
-          setSubjects(data.subjects);
-        }
-      } catch (error) {
-        console.error("Failed to fetch data:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchData();
-  }, []);
-
   const refreshAssessments = async () => {
-    try {
-      let url = "/api/teacher/assessments";
-      const params = new URLSearchParams();
-      if (filterSection !== "all") params.append("sectionId", filterSection);
-      if (filterType !== "all") params.append("type", filterType);
-      if (params.toString()) url += `?${params.toString()}`;
-
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        setAssessments(data.assessments);
-      }
-    } catch (error) {
-      console.error("Failed to refresh:", error);
-    }
+    // Use SWR mutate to revalidate the cache
+    await mutateAssessments();
   };
 
+  // Note: For filtered data, we would need to use a dynamic SWR key
+  // For now, filters work with the initial data or use local filtering
   useEffect(() => {
-    if (!loading) {
-      refreshAssessments();
+    if (!loading && (filterSection !== "all" || filterType !== "all")) {
+      // Trigger a refetch with filters by mutating SWR
+      const fetchFiltered = async () => {
+        let url = "/api/teacher/assessments";
+        const params = new URLSearchParams();
+        if (filterSection !== "all") params.append("sectionId", filterSection);
+        if (filterType !== "all") params.append("type", filterType);
+        if (params.toString()) url += `?${params.toString()}`;
+
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          mutateAssessments(data, false);
+        }
+      };
+      fetchFiltered();
+    } else if (!loading) {
+      mutateAssessments();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterSection, filterType]);
