@@ -1,6 +1,10 @@
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
+
+// Cache configuration
+const CACHE_REVALIDATE_SECONDS = 60; // Revalidate every 60 seconds
 
 // Dashboard data types
 export interface DashboardData {
@@ -60,10 +64,8 @@ export async function getTeacherProfile() {
   return teacherProfile;
 }
 
-// Fetch dashboard data
-export async function getTeacherDashboardData(): Promise<DashboardData> {
-  const teacherProfile = await getTeacherProfile();
-
+// Internal function to fetch dashboard data (cacheable)
+async function fetchDashboardDataInternal(teacherId: string): Promise<DashboardData> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const dayOfWeek = today.getDay();
@@ -78,7 +80,7 @@ export async function getTeacherDashboardData(): Promise<DashboardData> {
   ] = await Promise.all([
     // Get assigned sections count
     prisma.sectionTeacher.count({
-      where: { teacherId: teacherProfile.id },
+      where: { teacherId },
     }),
 
     // Get today's schedule
@@ -86,7 +88,7 @@ export async function getTeacherDashboardData(): Promise<DashboardData> {
       where: {
         section: {
           teachers: {
-            some: { teacherId: teacherProfile.id },
+            some: { teacherId },
           },
         },
         dayOfWeek,
@@ -105,7 +107,7 @@ export async function getTeacherDashboardData(): Promise<DashboardData> {
     // Get sections without attendance today
     prisma.sectionTeacher.findMany({
       where: {
-        teacherId: teacherProfile.id,
+        teacherId,
         section: {
           attendances: {
             none: {
@@ -128,7 +130,7 @@ export async function getTeacherDashboardData(): Promise<DashboardData> {
 
     // Get recent assessments by this teacher
     prisma.assessment.findMany({
-      where: { createdById: teacherProfile.id },
+      where: { createdById: teacherId },
       include: {
         section: {
           include: {
@@ -152,7 +154,7 @@ export async function getTeacherDashboardData(): Promise<DashboardData> {
       where: {
         section: {
           teachers: {
-            some: { teacherId: teacherProfile.id },
+            some: { teacherId },
           },
         },
       },
@@ -199,6 +201,23 @@ export async function getTeacherDashboardData(): Promise<DashboardData> {
   };
 }
 
+// Cached version of dashboard data fetch
+const getCachedDashboardData = (teacherId: string) =>
+  unstable_cache(
+    () => fetchDashboardDataInternal(teacherId),
+    [`teacher-dashboard-${teacherId}`],
+    {
+      revalidate: CACHE_REVALIDATE_SECONDS,
+      tags: [`teacher-${teacherId}`, "teacher-dashboard"],
+    }
+  )();
+
+// Public function to get dashboard data
+export async function getTeacherDashboardData(): Promise<DashboardData> {
+  const teacherProfile = await getTeacherProfile();
+  return getCachedDashboardData(teacherProfile.id);
+}
+
 // Classes data types
 export interface ClassesData {
   sections: {
@@ -227,13 +246,11 @@ export interface ClassesData {
   }[];
 }
 
-// Fetch teacher classes data
-export async function getTeacherClassesData(): Promise<ClassesData> {
-  const teacherProfile = await getTeacherProfile();
-
+// Internal function to fetch classes data (cacheable)
+async function fetchClassesDataInternal(teacherId: string): Promise<ClassesData> {
   const [sectionTeachers, subjects] = await Promise.all([
     prisma.sectionTeacher.findMany({
-      where: { teacherId: teacherProfile.id },
+      where: { teacherId },
       include: {
         section: {
           include: {
@@ -262,7 +279,7 @@ export async function getTeacherClassesData(): Promise<ClassesData> {
     prisma.subject.findMany({
       where: {
         teachers: {
-          some: { teacherId: teacherProfile.id },
+          some: { teacherId },
         },
       },
       distinct: ["id"],
@@ -295,4 +312,21 @@ export async function getTeacherClassesData(): Promise<ClassesData> {
       color: s.color,
     })),
   };
+}
+
+// Cached version of classes data fetch
+const getCachedClassesData = (teacherId: string) =>
+  unstable_cache(
+    () => fetchClassesDataInternal(teacherId),
+    [`teacher-classes-${teacherId}`],
+    {
+      revalidate: CACHE_REVALIDATE_SECONDS,
+      tags: [`teacher-${teacherId}`, "teacher-classes"],
+    }
+  )();
+
+// Public function to get classes data
+export async function getTeacherClassesData(): Promise<ClassesData> {
+  const teacherProfile = await getTeacherProfile();
+  return getCachedClassesData(teacherProfile.id);
 }
