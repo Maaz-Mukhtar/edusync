@@ -1,0 +1,61 @@
+[2m[WebServer] [22m[33m[1m⚠[22m[39m The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+
+Running 2 tests using 1 worker
+
+
+========================================
+  PERFORMANCE TEST RESULTS
+  Branch: main
+========================================
+
+  Dashboard (run 1): 1888ms
+  Dashboard (run 2): 1868ms
+  Dashboard (run 3): 1865ms
+  Attendance (run 1): 3307ms
+  Attendance (run 2): 3336ms
+  Attendance (run 3): 3358ms
+  Gradebook (run 1): 4099ms
+  Gradebook (run 2): 3916ms
+  Gradebook (run 3): 4374ms
+  Assessments (run 1): 2517ms
+  Assessments (run 2): 2462ms
+  Assessments (run 3): 2555ms
+  Classes (run 1): 2791ms
+  Classes (run 2): 2745ms
+  Classes (run 3): 2568ms
+
+========================================
+  SUMMARY
+========================================
+
+  Page           | Avg (ms) | Min (ms) | Max (ms)
+  ---------------|----------|----------|----------
+  Dashboard      |     1874 |     1865 |     1888
+  Attendance     |     3334 |     3307 |     3358
+  Gradebook      |     4130 |     3916 |     4374
+  Assessments    |     2511 |     2462 |     2555
+  Classes        |     2701 |     2568 |     2791
+  ---------------|----------|----------|----------
+  TOTAL          |    14550 |          |
+
+========================================
+
+  Results saved to: tests/results-main.json
+
+  ✓  1 [chromium] › tests/performance.spec.ts:50:7 › Page Load Performance Test › Measure page navigation times (1.3m)
+
+========================================
+  SEQUENTIAL NAVIGATION TEST
+========================================
+
+  Dashboard -> Attendance: 1336ms
+  Attendance -> Gradebook: 1833ms
+  Gradebook -> Assessments: 2845ms
+
+  ----------------------------------------
+  Total navigation time: 6014ms
+========================================
+
+  ✓  2 [chromium] › tests/performance.spec.ts:142:7 › Page Load Performance Test › Sequential navigation flow (Dashboard -> Attendance -> Gradebook -> Assessments) (10.7s)
+
+  2 passed (1.5m)
