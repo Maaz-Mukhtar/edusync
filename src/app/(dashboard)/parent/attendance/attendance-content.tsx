@@ -25,7 +25,7 @@ import type { ChildAttendanceData, ChildInfo } from "@/lib/data/parent";
 
 interface AttendanceContentProps {
   data: ChildAttendanceData;
-  children: ChildInfo[];
+  childList: ChildInfo[];
   selectedChildId: string;
 }
 
@@ -62,7 +62,7 @@ const STATUS_CONFIG = {
 
 export default function AttendanceContent({
   data,
-  children,
+  childList,
   selectedChildId,
 }: AttendanceContentProps) {
   const [filterMonth, setFilterMonth] = useState<string>("all");
@@ -113,7 +113,7 @@ export default function AttendanceContent({
           </p>
         </div>
         <ChildSwitcher
-          children={children}
+          childList={childList}
           selectedChildId={selectedChildId}
           basePath="/parent/attendance"
         />

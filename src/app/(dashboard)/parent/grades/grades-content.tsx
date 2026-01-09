@@ -25,13 +25,13 @@ import type { ChildGradesData, ChildInfo } from "@/lib/data/parent";
 
 interface GradesContentProps {
   data: ChildGradesData;
-  children: ChildInfo[];
+  childList: ChildInfo[];
   selectedChildId: string;
 }
 
 export default function GradesContent({
   data,
-  children,
+  childList,
   selectedChildId,
 }: GradesContentProps) {
   const [filterSubject, setFilterSubject] = useState<string>("all");
@@ -81,7 +81,7 @@ export default function GradesContent({
           </p>
         </div>
         <ChildSwitcher
-          children={children}
+          childList={childList}
           selectedChildId={selectedChildId}
           basePath="/parent/grades"
         />

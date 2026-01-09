@@ -56,7 +56,7 @@ async function GradesPage({ searchParams }: PageProps) {
   return (
     <GradesContent
       data={data}
-      children={children}
+      childList={children}
       selectedChildId={selectedChildId}
     />
   );

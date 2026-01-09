@@ -57,7 +57,7 @@ async function AttendancePage({ searchParams }: PageProps) {
   return (
     <AttendanceContent
       data={data}
-      children={children}
+      childList={children}
       selectedChildId={selectedChildId}
     />
   );
