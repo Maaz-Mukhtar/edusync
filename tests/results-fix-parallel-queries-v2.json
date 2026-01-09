@@ -1,0 +1,63 @@
+{
+  "branch": "fix/parallel-queries-v2",
+  "timestamp": "2026-01-09T21:14:49.114Z",
+  "iterations": 3,
+  "results": [
+    {
+      "page": "Dashboard",
+      "times": [
+        1050,
+        602,
+        623
+      ],
+      "average": 758,
+      "min": 602,
+      "max": 1050
+    },
+    {
+      "page": "Attendance",
+      "times": [
+        679,
+        612,
+        611
+      ],
+      "average": 634,
+      "min": 611,
+      "max": 679
+    },
+    {
+      "page": "Gradebook",
+      "times": [
+        669,
+        680,
+        680
+      ],
+      "average": 676,
+      "min": 669,
+      "max": 680
+    },
+    {
+      "page": "Assessments",
+      "times": [
+        1127,
+        589,
+        617
+      ],
+      "average": 778,
+      "min": 589,
+      "max": 1127
+    },
+    {
+      "page": "Classes",
+      "times": [
+        682,
+        581,
+        584
+      ],
+      "average": 616,
+      "min": 581,
+      "max": 682
+    }
+  ],
+  "totalAverage": 3462
+}

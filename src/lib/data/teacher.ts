@@ -710,3 +710,150 @@ export async function getTeacherGradebookData(): Promise<GradebookData> {
   const teacherProfile = await getTeacherProfile();
   return getCachedGradebookData(teacherProfile.id);
 }
+
+// ============================================
+// ASSESSMENTS DATA
+// ============================================
+
+export type AssessmentType = "TEST" | "QUIZ" | "ASSIGNMENT" | "EXAM";
+
+export interface AssessmentItem {
+  id: string;
+  title: string;
+  type: AssessmentType;
+  totalMarks: number;
+  date: Date;
+  description: string | null;
+  topics: string[];
+  section: {
+    id: string;
+    name: string;
+  };
+  subject: {
+    id: string;
+    name: string;
+    color: string | null;
+  };
+  gradedCount: number;
+  totalStudents: number;
+  createdAt: Date;
+}
+
+export interface AssessmentSection {
+  id: string;
+  name: string;
+  className: string;
+}
+
+export interface AssessmentSubject {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+export interface AssessmentsData {
+  assessments: AssessmentItem[];
+  sections: AssessmentSection[];
+  subjects: AssessmentSubject[];
+}
+
+// Internal function to fetch assessments data (cacheable)
+async function fetchAssessmentsDataInternal(teacherId: string): Promise<AssessmentsData> {
+  // Fetch all data in parallel
+  const [assessments, sectionTeachers, subjects, studentCounts] = await Promise.all([
+    // Get assessments
+    prisma.assessment.findMany({
+      where: { createdById: teacherId },
+      include: {
+        section: {
+          include: { class: true },
+        },
+        subject: true,
+        _count: {
+          select: { results: true },
+        },
+      },
+      orderBy: { date: "desc" },
+    }),
+    // Get sections
+    prisma.sectionTeacher.findMany({
+      where: { teacherId },
+      include: {
+        section: {
+          include: { class: true },
+        },
+      },
+      orderBy: [
+        { section: { class: { displayOrder: "asc" } } },
+        { section: { name: "asc" } },
+      ],
+    }),
+    // Get subjects
+    prisma.subject.findMany({
+      where: {
+        teachers: {
+          some: { teacherId },
+        },
+      },
+      distinct: ["id"],
+    }),
+    // Get student counts per section
+    prisma.studentProfile.groupBy({
+      by: ["sectionId"],
+      _count: true,
+    }),
+  ]);
+
+  const countMap = new Map(studentCounts.map((sc) => [sc.sectionId, sc._count]));
+
+  return {
+    assessments: assessments.map((a) => ({
+      id: a.id,
+      title: a.title,
+      type: a.type as AssessmentType,
+      totalMarks: a.totalMarks,
+      date: a.date,
+      description: a.description,
+      topics: a.topics,
+      section: {
+        id: a.section.id,
+        name: `${a.section.class.name} - ${a.section.name}`,
+      },
+      subject: {
+        id: a.subject.id,
+        name: a.subject.name,
+        color: a.subject.color,
+      },
+      gradedCount: a._count.results,
+      totalStudents: countMap.get(a.sectionId) || 0,
+      createdAt: a.createdAt,
+    })),
+    sections: sectionTeachers.map((st) => ({
+      id: st.section.id,
+      name: st.section.name,
+      className: st.section.class.name,
+    })),
+    subjects: subjects.map((s) => ({
+      id: s.id,
+      name: s.name,
+      color: s.color,
+    })),
+  };
+}
+
+// Cached version of assessments data fetch
+const getCachedAssessmentsData = (teacherId: string) =>
+  unstable_cache(
+    () => fetchAssessmentsDataInternal(teacherId),
+    [`teacher-assessments-${teacherId}`],
+    {
+      revalidate: CACHE_REVALIDATE_SECONDS,
+      tags: [`teacher-${teacherId}`, "teacher-assessments"],
+    }
+  )();
+
+// Public function to get assessments data
+export async function getTeacherAssessmentsData(): Promise<AssessmentsData> {
+  const teacherProfile = await getTeacherProfile();
+  return getCachedAssessmentsData(teacherProfile.id);
+}
