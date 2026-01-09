@@ -120,44 +120,76 @@ async function fetchDashboardDataInternal(parentId: string): Promise<ParentDashb
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
 
-  // Fetch parent with children data in parallel with announcements
-  const [parentData, announcements] = await Promise.all([
-    prisma.parentProfile.findUnique({
-      where: { id: parentId },
+  // First, get the list of children (lightweight query)
+  const parentChildren = await prisma.parentStudent.findMany({
+    where: { parentId },
+    select: { studentId: true },
+  });
+
+  const studentIds = parentChildren.map((c) => c.studentId);
+
+  if (studentIds.length === 0) {
+    return {
+      children: [],
+      stats: {
+        totalChildren: 0,
+        avgAttendance: 0,
+        totalPendingFees: 0,
+        unreadNotifications: 0,
+      },
+      announcements: [],
+    };
+  }
+
+  // Run all queries in parallel (5 separate queries like teacher portal)
+  const [
+    students,
+    attendances,
+    pendingFees,
+    recentResults,
+    announcements,
+  ] = await Promise.all([
+    // 1. Get student profiles with user and section info
+    prisma.studentProfile.findMany({
+      where: { id: { in: studentIds } },
       include: {
-        children: {
-          include: {
-            student: {
-              include: {
-                user: {
-                  select: { firstName: true, lastName: true },
-                },
-                section: {
-                  include: { class: true },
-                },
-                attendances: {
-                  where: { date: { gte: monthStart } },
-                  select: { status: true },
-                },
-                feeInvoices: {
-                  where: { status: "PENDING" },
-                  select: { amount: true },
-                },
-                results: {
-                  take: 1,
-                  orderBy: { assessment: { date: "desc" } },
-                  include: {
-                    assessment: {
-                      include: { subject: true },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
+        user: { select: { firstName: true, lastName: true } },
+        section: { include: { class: true } },
       },
     }),
+
+    // 2. Get attendance for current month (grouped by student)
+    prisma.attendance.findMany({
+      where: {
+        studentId: { in: studentIds },
+        date: { gte: monthStart },
+      },
+      select: { studentId: true, status: true },
+    }),
+
+    // 3. Get pending fee totals per student
+    prisma.feeInvoice.groupBy({
+      by: ["studentId"],
+      where: {
+        studentId: { in: studentIds },
+        status: "PENDING",
+      },
+      _sum: { amount: true },
+    }),
+
+    // 4. Get most recent result per student
+    prisma.assessmentResult.findMany({
+      where: { studentId: { in: studentIds } },
+      orderBy: { assessment: { date: "desc" } },
+      include: {
+        assessment: {
+          include: { subject: { select: { name: true } } },
+        },
+      },
+      distinct: ["studentId"],
+    }),
+
+    // 5. Get announcements
     prisma.announcement.findMany({
       where: {
         OR: [
@@ -171,30 +203,37 @@ async function fetchDashboardDataInternal(parentId: string): Promise<ParentDashb
     }),
   ]);
 
-  if (!parentData) {
-    return {
-      children: [],
-      stats: {
-        totalChildren: 0,
-        avgAttendance: 0,
-        totalPendingFees: 0,
-        unreadNotifications: 0,
-      },
-      announcements: [],
-    };
+  // Build lookup maps for O(1) access
+  const attendanceByStudent = new Map<string, { present: number; total: number }>();
+  for (const a of attendances) {
+    if (!attendanceByStudent.has(a.studentId)) {
+      attendanceByStudent.set(a.studentId, { present: 0, total: 0 });
+    }
+    const stats = attendanceByStudent.get(a.studentId)!;
+    stats.total++;
+    if (a.status === "PRESENT" || a.status === "LATE") {
+      stats.present++;
+    }
   }
 
+  const feesByStudent = new Map(
+    pendingFees.map((f) => [f.studentId, f._sum.amount || 0])
+  );
+
+  const resultsByStudent = new Map(
+    recentResults.map((r) => [r.studentId, r])
+  );
+
   // Process children data
-  const children: ChildDashboardInfo[] = parentData.children.map((c) => {
-    const presentDays = c.student.attendances.filter(
-      (a) => a.status === "PRESENT" || a.status === "LATE"
-    ).length;
-    const totalDays = c.student.attendances.length;
-    const attendancePercentage = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
+  const children: ChildDashboardInfo[] = students.map((student) => {
+    const attStats = attendanceByStudent.get(student.id);
+    const attendancePercentage = attStats && attStats.total > 0
+      ? Math.round((attStats.present / attStats.total) * 100)
+      : 0;
 
-    const pendingFees = c.student.feeInvoices.reduce((acc, inv) => acc + inv.amount, 0);
+    const studentPendingFees = feesByStudent.get(student.id) || 0;
 
-    const recentResult = c.student.results[0];
+    const recentResult = resultsByStudent.get(student.id);
     const recentGrade = recentResult
       ? {
           title: recentResult.assessment.title,
@@ -205,14 +244,17 @@ async function fetchDashboardDataInternal(parentId: string): Promise<ParentDashb
         }
       : null;
 
+    // Find the parentStudent record to get the id
+    const parentStudent = parentChildren.find((c) => c.studentId === student.id);
+
     return {
-      id: c.id,
-      studentId: c.student.id,
-      name: `${c.student.user.firstName} ${c.student.user.lastName}`,
-      className: c.student.section.class.name,
-      sectionName: c.student.section.name,
+      id: parentStudent?.studentId || student.id,
+      studentId: student.id,
+      name: `${student.user.firstName} ${student.user.lastName}`,
+      className: student.section.class.name,
+      sectionName: student.section.name,
       attendancePercentage,
-      pendingFees,
+      pendingFees: studentPendingFees,
       recentGrade,
     };
   });
@@ -620,28 +662,15 @@ export interface FeesData {
 
 // Internal function to fetch fees data
 async function fetchFeesDataInternal(parentId: string): Promise<FeesData> {
-  const parentData = await prisma.parentProfile.findUnique({
-    where: { id: parentId },
-    include: {
-      children: {
-        include: {
-          student: {
-            include: {
-              user: { select: { firstName: true, lastName: true } },
-              feeInvoices: {
-                include: {
-                  feeStructure: true,
-                },
-                orderBy: { dueDate: "desc" },
-              },
-            },
-          },
-        },
-      },
-    },
+  // First get children list (lightweight query)
+  const parentChildren = await prisma.parentStudent.findMany({
+    where: { parentId },
+    select: { studentId: true },
   });
 
-  if (!parentData) {
+  const studentIds = parentChildren.map((c) => c.studentId);
+
+  if (studentIds.length === 0) {
     return {
       invoices: [],
       summary: {
@@ -656,6 +685,31 @@ async function fetchFeesDataInternal(parentId: string): Promise<FeesData> {
     };
   }
 
+  // Run queries in parallel
+  const [students, feeInvoices] = await Promise.all([
+    // Get student names
+    prisma.studentProfile.findMany({
+      where: { id: { in: studentIds } },
+      include: {
+        user: { select: { firstName: true, lastName: true } },
+      },
+    }),
+
+    // Get all fee invoices
+    prisma.feeInvoice.findMany({
+      where: { studentId: { in: studentIds } },
+      include: {
+        feeStructure: { select: { name: true } },
+      },
+      orderBy: { dueDate: "desc" },
+    }),
+  ]);
+
+  // Build student name lookup
+  const studentNames = new Map(
+    students.map((s) => [s.id, `${s.user.firstName} ${s.user.lastName}`])
+  );
+
   const today = new Date();
   const invoices: FeeInvoice[] = [];
   const byChildMap = new Map<string, {
@@ -665,38 +719,37 @@ async function fetchFeesDataInternal(parentId: string): Promise<FeesData> {
     overdue: number;
   }>();
 
-  for (const child of parentData.children) {
-    const childName = `${child.student.user.firstName} ${child.student.user.lastName}`;
+  // Initialize byChildMap for all children
+  for (const studentId of studentIds) {
+    byChildMap.set(studentId, {
+      childName: studentNames.get(studentId) || "Unknown",
+      pending: 0,
+      paid: 0,
+      overdue: 0,
+    });
+  }
 
-    if (!byChildMap.has(child.student.id)) {
-      byChildMap.set(child.student.id, {
-        childName,
-        pending: 0,
-        paid: 0,
-        overdue: 0,
-      });
-    }
+  for (const invoice of feeInvoices) {
+    const childName = studentNames.get(invoice.studentId) || "Unknown";
+    const isOverdue = invoice.status === "PENDING" && new Date(invoice.dueDate) < today;
+    const status = isOverdue ? "OVERDUE" : invoice.status;
 
-    const childStats = byChildMap.get(child.student.id)!;
+    invoices.push({
+      id: invoice.id,
+      childName,
+      studentId: invoice.studentId,
+      feeType: invoice.feeStructure.name,
+      amount: invoice.amount,
+      dueDate: invoice.dueDate,
+      paidDate: invoice.paidDate,
+      status: status as "PENDING" | "PAID" | "OVERDUE" | "CANCELLED",
+      paymentMethod: invoice.paymentMethod,
+      transactionId: invoice.transactionId,
+      remarks: invoice.remarks,
+    });
 
-    for (const invoice of child.student.feeInvoices) {
-      const isOverdue = invoice.status === "PENDING" && new Date(invoice.dueDate) < today;
-      const status = isOverdue ? "OVERDUE" : invoice.status;
-
-      invoices.push({
-        id: invoice.id,
-        childName,
-        studentId: child.student.id,
-        feeType: invoice.feeStructure.name,
-        amount: invoice.amount,
-        dueDate: invoice.dueDate,
-        paidDate: invoice.paidDate,
-        status: status as "PENDING" | "PAID" | "OVERDUE" | "CANCELLED",
-        paymentMethod: invoice.paymentMethod,
-        transactionId: invoice.transactionId,
-        remarks: invoice.remarks,
-      });
-
+    const childStats = byChildMap.get(invoice.studentId);
+    if (childStats) {
       if (status === "PAID") {
         childStats.paid += invoice.amount;
       } else if (status === "OVERDUE") {
