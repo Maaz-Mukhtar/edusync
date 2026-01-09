@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const isProd = process.env.PROD === '1';
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
@@ -18,7 +20,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev',
+    command: isProd ? 'npm run start' : 'npm run dev',
     url: 'http://localhost:3000',
     reuseExistingServer: true,
     timeout: 120 * 1000,

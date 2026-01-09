@@ -1,63 +1,63 @@
 {
   "branch": "fix/nextjs-caching",
-  "timestamp": "2026-01-08T21:07:25.192Z",
+  "timestamp": "2026-01-08T21:19:26.070Z",
   "iterations": 3,
   "results": [
     {
       "page": "Dashboard",
       "times": [
-        1071,
-        1065,
-        1063
+        1033,
+        1022,
+        1032
       ],
-      "average": 1066,
-      "min": 1063,
-      "max": 1071
+      "average": 1029,
+      "min": 1022,
+      "max": 1033
     },
     {
       "page": "Attendance",
       "times": [
-        3520,
-        3535,
-        3509
+        3336,
+        3283,
+        3285
       ],
-      "average": 3521,
-      "min": 3509,
-      "max": 3535
+      "average": 3301,
+      "min": 3283,
+      "max": 3336
     },
     {
       "page": "Gradebook",
       "times": [
-        4336,
-        4309,
-        4362
+        4047,
+        4014,
+        4086
       ],
-      "average": 4336,
-      "min": 4309,
-      "max": 4362
+      "average": 4049,
+      "min": 4014,
+      "max": 4086
     },
     {
       "page": "Assessments",
       "times": [
-        3511,
-        2642,
-        2651
+        3339,
+        2530,
+        2560
       ],
-      "average": 2935,
-      "min": 2642,
-      "max": 3511
+      "average": 2810,
+      "min": 2530,
+      "max": 3339
     },
     {
       "page": "Classes",
       "times": [
-        1984,
-        1105,
-        1103
+        1141,
+        1065,
+        1074
       ],
-      "average": 1397,
-      "min": 1103,
-      "max": 1984
+      "average": 1093,
+      "min": 1065,
+      "max": 1141
     }
   ],
-  "totalAverage": 13255
+  "totalAverage": 12282
 }

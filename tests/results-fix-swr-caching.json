@@ -1,0 +1,63 @@
+{
+  "branch": "fix/swr-caching",
+  "timestamp": "2026-01-08T21:13:34.173Z",
+  "iterations": 3,
+  "results": [
+    {
+      "page": "Dashboard",
+      "times": [
+        1885,
+        1872,
+        1908
+      ],
+      "average": 1888,
+      "min": 1872,
+      "max": 1908
+    },
+    {
+      "page": "Attendance",
+      "times": [
+        3270,
+        3539,
+        3330
+      ],
+      "average": 3380,
+      "min": 3270,
+      "max": 3539
+    },
+    {
+      "page": "Gradebook",
+      "times": [
+        3966,
+        4037,
+        4190
+      ],
+      "average": 4064,
+      "min": 3966,
+      "max": 4190
+    },
+    {
+      "page": "Assessments",
+      "times": [
+        2499,
+        2506,
+        2495
+      ],
+      "average": 2500,
+      "min": 2495,
+      "max": 2506
+    },
+    {
+      "page": "Classes",
+      "times": [
+        2562,
+        2551,
+        2529
+      ],
+      "average": 2547,
+      "min": 2529,
+      "max": 2562
+    }
+  ],
+  "totalAverage": 14379
+}

@@ -1,0 +1,63 @@
+{
+  "branch": "PRODUCTION",
+  "timestamp": "2026-01-08T21:49:39.936Z",
+  "iterations": 3,
+  "results": [
+    {
+      "page": "Dashboard",
+      "times": [
+        596,
+        480,
+        465
+      ],
+      "average": 514,
+      "min": 465,
+      "max": 596
+    },
+    {
+      "page": "Attendance",
+      "times": [
+        2757,
+        1745,
+        1746
+      ],
+      "average": 2083,
+      "min": 1745,
+      "max": 2757
+    },
+    {
+      "page": "Gradebook",
+      "times": [
+        2252,
+        2256,
+        2256
+      ],
+      "average": 2255,
+      "min": 2252,
+      "max": 2256
+    },
+    {
+      "page": "Assessments",
+      "times": [
+        2255,
+        2247,
+        2754
+      ],
+      "average": 2419,
+      "min": 2247,
+      "max": 2754
+    },
+    {
+      "page": "Classes",
+      "times": [
+        1357,
+        492,
+        483
+      ],
+      "average": 777,
+      "min": 483,
+      "max": 1357
+    }
+  ],
+  "totalAverage": 8048
+}

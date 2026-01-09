@@ -33,7 +33,7 @@ test.describe('Page Load Performance Test', () => {
   test.beforeEach(async ({ page }) => {
     // Login before each test
     await page.goto('/login');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
 
     // Fill login form using id selectors
     await page.fill('#email', CREDENTIALS.email);
@@ -44,7 +44,7 @@ test.describe('Page Load Performance Test', () => {
 
     // Wait for redirect to teacher dashboard
     await page.waitForURL('**/teacher**', { timeout: 30000 });
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
   });
 
   test('Measure page navigation times', async ({ page }) => {
@@ -62,7 +62,7 @@ test.describe('Page Load Performance Test', () => {
       for (let i = 0; i < ITERATIONS; i++) {
         // Start from dashboard to ensure consistent starting point
         await page.goto('/teacher');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
         await page.waitForSelector('h1', { timeout: 15000 });
 
         // Measure navigation time
@@ -71,7 +71,7 @@ test.describe('Page Load Performance Test', () => {
         await page.goto(targetPage.path);
 
         // Wait for the page to be fully loaded (no loading skeletons)
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // Also wait for any skeleton elements to disappear
         try {
@@ -155,7 +155,7 @@ test.describe('Page Load Performance Test', () => {
 
     // Start at dashboard
     await page.goto('/teacher');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     await page.waitForSelector('h1', { timeout: 15000 });
 
     let previousPage = 'Dashboard';
@@ -170,7 +170,7 @@ test.describe('Page Load Performance Test', () => {
 
       // Wait for navigation and content
       await page.waitForURL(`**${targetPage.path}**`, { timeout: 15000 });
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('load');
 
       // Wait for skeletons to disappear
       try {

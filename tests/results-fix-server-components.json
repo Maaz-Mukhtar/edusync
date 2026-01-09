@@ -1,0 +1,63 @@
+{
+  "branch": "fix/server-components",
+  "timestamp": "2026-01-08T21:16:33.318Z",
+  "iterations": 3,
+  "results": [
+    {
+      "page": "Dashboard",
+      "times": [
+        1550,
+        1440,
+        1395
+      ],
+      "average": 1462,
+      "min": 1395,
+      "max": 1550
+    },
+    {
+      "page": "Attendance",
+      "times": [
+        3461,
+        3406,
+        3358
+      ],
+      "average": 3408,
+      "min": 3358,
+      "max": 3461
+    },
+    {
+      "page": "Gradebook",
+      "times": [
+        4080,
+        4006,
+        4464
+      ],
+      "average": 4183,
+      "min": 4006,
+      "max": 4464
+    },
+    {
+      "page": "Assessments",
+      "times": [
+        2622,
+        2518,
+        2458
+      ],
+      "average": 2533,
+      "min": 2458,
+      "max": 2622
+    },
+    {
+      "page": "Classes",
+      "times": [
+        1709,
+        1589,
+        1628
+      ],
+      "average": 1642,
+      "min": 1589,
+      "max": 1709
+    }
+  ],
+  "totalAverage": 13228
+}
