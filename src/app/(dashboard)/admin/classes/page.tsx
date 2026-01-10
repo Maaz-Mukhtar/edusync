@@ -10,6 +10,9 @@ import {
   ChevronRight,
   School,
   MoreHorizontal,
+  UserPlus,
+  X,
+  Crown,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -52,7 +55,31 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+
+interface Teacher {
+  id: string;
+  userId: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  employeeId: string | null;
+}
+
+interface SectionTeacher {
+  id: string;
+  teacherId: string;
+  isClassTeacher: boolean;
+  teacher: Teacher;
+}
 
 interface Section {
   id: string;
@@ -60,7 +87,9 @@ interface Section {
   capacity: number | null;
   _count: {
     students: number;
+    teachers: number;
   };
+  teachers?: SectionTeacher[];
 }
 
 interface Class {
@@ -82,6 +111,16 @@ export default function ClassesPage() {
   const [classDialogOpen, setClassDialogOpen] = useState(false);
   const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [teacherDialogOpen, setTeacherDialogOpen] = useState(false);
+
+  // Teacher management states
+  const [allTeachers, setAllTeachers] = useState<Teacher[]>([]);
+  const [selectedSectionForTeachers, setSelectedSectionForTeachers] = useState<{ section: Section; className: string } | null>(null);
+  const [sectionTeachers, setSectionTeachers] = useState<SectionTeacher[]>([]);
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string>("");
+  const [isClassTeacher, setIsClassTeacher] = useState(false);
+  const [loadingTeachers, setLoadingTeachers] = useState(false);
+  const [addingTeacher, setAddingTeacher] = useState(false);
 
   // Form states
   const [editingClass, setEditingClass] = useState<Class | null>(null);
@@ -120,6 +159,106 @@ export default function ClassesPage() {
   useEffect(() => {
     fetchClasses();
   }, [fetchClasses]);
+
+  // Fetch all teachers for assignment
+  const fetchAllTeachers = useCallback(async () => {
+    try {
+      const response = await fetch("/api/teachers");
+      const data = await response.json();
+      if (response.ok) {
+        setAllTeachers(data.teachers);
+      }
+    } catch {
+      console.error("Failed to fetch teachers");
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAllTeachers();
+  }, [fetchAllTeachers]);
+
+  // Fetch teachers for a specific section
+  const fetchSectionTeachers = async (sectionId: string) => {
+    setLoadingTeachers(true);
+    try {
+      const response = await fetch(`/api/sections/${sectionId}/teachers`);
+      const data = await response.json();
+      if (response.ok) {
+        setSectionTeachers(data.teachers);
+      } else {
+        toast.error("Failed to load teachers");
+      }
+    } catch {
+      toast.error("Failed to load teachers");
+    } finally {
+      setLoadingTeachers(false);
+    }
+  };
+
+  // Open teacher management dialog
+  const openTeacherDialog = (section: Section, className: string) => {
+    setSelectedSectionForTeachers({ section, className });
+    setSelectedTeacherId("");
+    setIsClassTeacher(false);
+    fetchSectionTeachers(section.id);
+    setTeacherDialogOpen(true);
+  };
+
+  // Add teacher to section
+  const handleAddTeacher = async () => {
+    if (!selectedTeacherId || !selectedSectionForTeachers) return;
+
+    setAddingTeacher(true);
+    try {
+      const response = await fetch(`/api/sections/${selectedSectionForTeachers.section.id}/teachers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teacherId: selectedTeacherId,
+          isClassTeacher,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success("Teacher assigned successfully");
+        setSelectedTeacherId("");
+        setIsClassTeacher(false);
+        fetchSectionTeachers(selectedSectionForTeachers.section.id);
+        fetchClasses(); // Refresh counts
+      } else {
+        toast.error(data.error || "Failed to assign teacher");
+      }
+    } catch {
+      toast.error("Failed to assign teacher");
+    } finally {
+      setAddingTeacher(false);
+    }
+  };
+
+  // Remove teacher from section
+  const handleRemoveTeacher = async (teacherId: string) => {
+    if (!selectedSectionForTeachers) return;
+
+    try {
+      const response = await fetch(
+        `/api/sections/${selectedSectionForTeachers.section.id}/teachers?teacherId=${teacherId}`,
+        { method: "DELETE" }
+      );
+
+      if (response.ok) {
+        toast.success("Teacher removed successfully");
+        fetchSectionTeachers(selectedSectionForTeachers.section.id);
+        fetchClasses(); // Refresh counts
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to remove teacher");
+      }
+    } catch {
+      toast.error("Failed to remove teacher");
+    }
+  };
 
   const toggleExpand = (classId: string) => {
     const newExpanded = new Set(expandedClasses);
@@ -417,6 +556,8 @@ export default function ClassesPage() {
                               <div className="text-sm text-muted-foreground">
                                 {section._count.students} student{section._count.students !== 1 ? "s" : ""}
                                 {section.capacity && ` / ${section.capacity} capacity`}
+                                {" | "}
+                                {section._count.teachers} teacher{section._count.teachers !== 1 ? "s" : ""}
                               </div>
                             </div>
                             <DropdownMenu>
@@ -426,6 +567,10 @@ export default function ClassesPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => openTeacherDialog(section, cls.name)}>
+                                  <UserPlus className="mr-2 h-4 w-4" />
+                                  Manage Teachers
+                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => openSectionDialog(cls.id, section)}>
                                   <Pencil className="mr-2 h-4 w-4" />
                                   Edit
@@ -546,6 +691,98 @@ export default function ClassesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Teacher Management Dialog */}
+      <Dialog open={teacherDialogOpen} onOpenChange={setTeacherDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Manage Teachers</DialogTitle>
+            <DialogDescription>
+              {selectedSectionForTeachers &&
+                `Assign teachers to ${selectedSectionForTeachers.className} - ${selectedSectionForTeachers.section.name}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* Add Teacher Form */}
+            <div className="space-y-3">
+              <Label>Add Teacher</Label>
+              <div className="flex gap-2">
+                <Select value={selectedTeacherId} onValueChange={setSelectedTeacherId}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Select a teacher" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allTeachers
+                      .filter((t) => !sectionTeachers.some((st) => st.teacherId === t.id))
+                      .map((teacher) => (
+                        <SelectItem key={teacher.id} value={teacher.id}>
+                          {teacher.firstName} {teacher.lastName}
+                          {teacher.employeeId && ` (${teacher.employeeId})`}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <Button onClick={handleAddTeacher} disabled={!selectedTeacherId || addingTeacher}>
+                  {addingTeacher ? "Adding..." : "Add"}
+                </Button>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="isClassTeacher"
+                  checked={isClassTeacher}
+                  onCheckedChange={(checked) => setIsClassTeacher(checked === true)}
+                />
+                <Label htmlFor="isClassTeacher" className="text-sm font-normal">
+                  Set as Class Teacher
+                </Label>
+              </div>
+            </div>
+
+            {/* Assigned Teachers List */}
+            <div className="space-y-2">
+              <Label>Assigned Teachers</Label>
+              {loadingTeachers ? (
+                <p className="text-sm text-muted-foreground">Loading...</p>
+              ) : sectionTeachers.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No teachers assigned yet</p>
+              ) : (
+                <div className="space-y-2">
+                  {sectionTeachers.map((st) => (
+                    <div
+                      key={st.id}
+                      className="flex items-center justify-between rounded-lg border p-3"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">
+                          {st.teacher.firstName} {st.teacher.lastName}
+                        </span>
+                        {st.isClassTeacher && (
+                          <Badge variant="secondary" className="gap-1">
+                            <Crown className="h-3 w-3" />
+                            Class Teacher
+                          </Badge>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemoveTeacher(st.teacherId)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTeacherDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -9,6 +9,8 @@ import {
   MoreHorizontal,
   Users,
   FileText,
+  UserPlus,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -45,7 +47,29 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
+
+interface Teacher {
+  id: string;
+  userId: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  employeeId: string | null;
+}
+
+interface SubjectTeacher {
+  id: string;
+  teacherId: string;
+  teacher: Teacher;
+}
 
 interface Subject {
   id: string;
@@ -89,6 +113,15 @@ export default function SubjectsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Teacher management states
+  const [teacherDialogOpen, setTeacherDialogOpen] = useState(false);
+  const [allTeachers, setAllTeachers] = useState<Teacher[]>([]);
+  const [selectedSubjectForTeachers, setSelectedSubjectForTeachers] = useState<Subject | null>(null);
+  const [subjectTeachers, setSubjectTeachers] = useState<SubjectTeacher[]>([]);
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string>("");
+  const [loadingTeachers, setLoadingTeachers] = useState(false);
+  const [addingTeacher, setAddingTeacher] = useState(false);
+
   const fetchSubjects = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -110,6 +143,90 @@ export default function SubjectsPage() {
   useEffect(() => {
     fetchSubjects();
   }, [fetchSubjects]);
+
+  const fetchAllTeachers = async () => {
+    try {
+      const response = await fetch("/api/teachers");
+      const data = await response.json();
+      if (response.ok) {
+        setAllTeachers(data.teachers);
+      }
+    } catch {
+      toast.error("Failed to fetch teachers");
+    }
+  };
+
+  const fetchSubjectTeachers = async (subjectId: string) => {
+    setLoadingTeachers(true);
+    try {
+      const response = await fetch(`/api/subjects/${subjectId}/teachers`);
+      const data = await response.json();
+      if (response.ok) {
+        setSubjectTeachers(data.teachers);
+      } else {
+        toast.error("Failed to fetch subject teachers");
+      }
+    } catch {
+      toast.error("Failed to fetch subject teachers");
+    } finally {
+      setLoadingTeachers(false);
+    }
+  };
+
+  const openTeacherDialog = async (subject: Subject) => {
+    setSelectedSubjectForTeachers(subject);
+    setTeacherDialogOpen(true);
+    await Promise.all([fetchAllTeachers(), fetchSubjectTeachers(subject.id)]);
+  };
+
+  const handleAddTeacher = async () => {
+    if (!selectedSubjectForTeachers || !selectedTeacherId) return;
+
+    setAddingTeacher(true);
+    try {
+      const response = await fetch(`/api/subjects/${selectedSubjectForTeachers.id}/teachers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teacherId: selectedTeacherId }),
+      });
+
+      if (response.ok) {
+        toast.success("Teacher assigned successfully");
+        setSelectedTeacherId("");
+        await fetchSubjectTeachers(selectedSubjectForTeachers.id);
+        fetchSubjects();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to assign teacher");
+      }
+    } catch {
+      toast.error("Failed to assign teacher");
+    } finally {
+      setAddingTeacher(false);
+    }
+  };
+
+  const handleRemoveTeacher = async (teacherId: string) => {
+    if (!selectedSubjectForTeachers) return;
+
+    try {
+      const response = await fetch(
+        `/api/subjects/${selectedSubjectForTeachers.id}/teachers?teacherId=${teacherId}`,
+        { method: "DELETE" }
+      );
+
+      if (response.ok) {
+        toast.success("Teacher removed successfully");
+        await fetchSubjectTeachers(selectedSubjectForTeachers.id);
+        fetchSubjects();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to remove teacher");
+      }
+    } catch {
+      toast.error("Failed to remove teacher");
+    }
+  };
 
   const openDialog = (subject?: Subject) => {
     if (subject) {
@@ -288,6 +405,10 @@ export default function SubjectsPage() {
                         <Pencil className="mr-2 h-4 w-4" />
                         Edit
                       </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openTeacherDialog(subject)}>
+                        <UserPlus className="mr-2 h-4 w-4" />
+                        Manage Teachers
+                      </DropdownMenuItem>
                       <DropdownMenuItem
                         className="text-destructive focus:text-destructive"
                         onClick={() => openDeleteDialog(subject)}
@@ -406,6 +527,87 @@ export default function SubjectsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Teacher Management Dialog */}
+      <Dialog open={teacherDialogOpen} onOpenChange={setTeacherDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Manage Teachers</DialogTitle>
+            <DialogDescription>
+              Assign teachers to {selectedSubjectForTeachers?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* Add Teacher */}
+            <div className="space-y-2">
+              <Label>Add Teacher</Label>
+              <div className="flex gap-2">
+                <Select value={selectedTeacherId} onValueChange={setSelectedTeacherId}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Select a teacher" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allTeachers
+                      .filter(
+                        (t) => !subjectTeachers.some((st) => st.teacherId === t.id)
+                      )
+                      .map((teacher) => (
+                        <SelectItem key={teacher.id} value={teacher.id}>
+                          {teacher.firstName} {teacher.lastName}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={handleAddTeacher}
+                  disabled={!selectedTeacherId || addingTeacher}
+                >
+                  {addingTeacher ? "Adding..." : "Add"}
+                </Button>
+              </div>
+            </div>
+
+            {/* Assigned Teachers List */}
+            <div className="space-y-2">
+              <Label>Assigned Teachers</Label>
+              {loadingTeachers ? (
+                <p className="text-sm text-muted-foreground">Loading...</p>
+              ) : subjectTeachers.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No teachers assigned</p>
+              ) : (
+                <div className="space-y-2">
+                  {subjectTeachers.map((st) => (
+                    <div
+                      key={st.id}
+                      className="flex items-center justify-between p-2 border rounded-md"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">
+                          {st.teacher.firstName} {st.teacher.lastName}
+                        </span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => handleRemoveTeacher(st.teacherId)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTeacherDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
