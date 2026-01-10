@@ -38,6 +38,7 @@ const adminNavItems: NavItem[] = [
   { title: "Subjects", href: "/admin/subjects", icon: BookOpen },
   { title: "Parent Links", href: "/admin/parent-links", icon: Link2 },
   { title: "Fee Management", href: "/admin/fees", icon: DollarSign },
+  { title: "Events", href: "/admin/events", icon: CalendarCheck },
   { title: "Announcements", href: "/admin/announcements", icon: Bell },
   { title: "Reports", href: "/admin/reports", icon: BarChart3 },
   { title: "Settings", href: "/admin/settings", icon: Settings },
