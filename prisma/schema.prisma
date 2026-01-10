@@ -67,6 +67,7 @@ model School {
   feeStructures FeeStructure[]
   announcements Announcement[]
   academicYears AcademicYear[]
+  events        Event[]
 
   @@index([subdomain])
 }
@@ -151,13 +152,14 @@ model StudentProfile {
   bloodGroup    String?
   address       String?
 
-  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  section     Section            @relation(fields: [sectionId], references: [id])
-  parents     ParentStudent[]
-  attendances Attendance[]
-  results     AssessmentResult[]
-  feeInvoices FeeInvoice[]
-  insights    StudentInsight[]
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  section        Section            @relation(fields: [sectionId], references: [id])
+  parents        ParentStudent[]
+  attendances    Attendance[]
+  results        AssessmentResult[]
+  feeInvoices    FeeInvoice[]
+  insights       StudentInsight[]
+  eventApprovals EventApproval[]
 
   @@index([sectionId])
 }
@@ -183,8 +185,9 @@ model ParentProfile {
   occupation   String?
   relationship String?
 
-  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  children ParentStudent[]
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  children       ParentStudent[]
+  eventApprovals EventApproval[]
 }
 
 model ParentStudent {
@@ -467,4 +470,67 @@ model StudentInsight {
 
   @@index([studentId])
   @@index([generatedAt])
+}
+
+// ==================== EVENTS & TRIPS ====================
+
+enum EventType {
+  TRIP
+  EVENT
+  ACTIVITY
+  WORKSHOP
+  COMPETITION
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
+model Event {
+  id          String    @id @default(cuid())
+  schoolId    String
+  title       String
+  description String?   @db.Text
+  type        EventType
+  location    String?
+  startDate   DateTime
+  endDate     DateTime?
+  fee         Float?    // Optional fee for the event
+  capacity    Int?      // Max participants
+  deadline    DateTime  // Deadline for approval responses
+  targetAudience String[] // ["all", "class:7", "section:7-A"]
+  requiresApproval Boolean @default(true)
+  createdBy   String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  school    School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  approvals EventApproval[]
+
+  @@index([schoolId])
+  @@index([startDate])
+  @@index([deadline])
+}
+
+model EventApproval {
+  id         String         @id @default(cuid())
+  eventId    String
+  studentId  String
+  parentId   String
+  status     ApprovalStatus @default(PENDING)
+  remarks    String?
+  respondedAt DateTime?
+  createdAt  DateTime       @default(now())
+
+  event   Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  parent  ParentProfile  @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, studentId])
+  @@index([eventId])
+  @@index([studentId])
+  @@index([parentId])
+  @@index([status])
 }

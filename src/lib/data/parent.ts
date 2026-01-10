@@ -98,6 +98,15 @@ export interface ChildDashboardInfo {
   } | null;
 }
 
+export interface PendingEventApproval {
+  eventId: string;
+  eventTitle: string;
+  eventType: string;
+  deadline: Date;
+  childrenPending: string[];
+  isUrgent: boolean;
+}
+
 export interface ParentDashboardData {
   children: ChildDashboardInfo[];
   stats: {
@@ -105,6 +114,7 @@ export interface ParentDashboardData {
     avgAttendance: number;
     totalPendingFees: number;
     unreadNotifications: number;
+    pendingEventApprovals: number;
   };
   announcements: {
     id: string;
@@ -112,6 +122,7 @@ export interface ParentDashboardData {
     content: string;
     createdAt: Date;
   }[];
+  pendingEvents: PendingEventApproval[];
 }
 
 // Internal function to fetch dashboard data (cacheable)
@@ -136,18 +147,23 @@ async function fetchDashboardDataInternal(parentId: string): Promise<ParentDashb
         avgAttendance: 0,
         totalPendingFees: 0,
         unreadNotifications: 0,
+        pendingEventApprovals: 0,
       },
       announcements: [],
+      pendingEvents: [],
     };
   }
 
-  // Run all queries in parallel (5 separate queries like teacher portal)
+  const now = new Date();
+
+  // Run all queries in parallel (6 separate queries like teacher portal)
   const [
     students,
     attendances,
     pendingFees,
     recentResults,
     announcements,
+    eventApprovals,
   ] = await Promise.all([
     // 1. Get student profiles with user and section info
     prisma.studentProfile.findMany({
@@ -200,6 +216,25 @@ async function fetchDashboardDataInternal(parentId: string): Promise<ParentDashb
       },
       orderBy: { createdAt: "desc" },
       take: 3,
+    }),
+
+    // 6. Get pending event approvals
+    prisma.eventApproval.findMany({
+      where: {
+        parentId,
+        status: "PENDING",
+        event: {
+          deadline: { gte: now },
+          startDate: { gte: now },
+        },
+      },
+      include: {
+        event: { select: { id: true, title: true, type: true, deadline: true } },
+        student: {
+          include: { user: { select: { firstName: true } } },
+        },
+      },
+      orderBy: { event: { deadline: "asc" } },
     }),
   ]);
 
@@ -266,6 +301,28 @@ async function fetchDashboardDataInternal(parentId: string): Promise<ParentDashb
       ? Math.round(children.reduce((acc, c) => acc + c.attendancePercentage, 0) / children.length)
       : 0;
 
+  // Process pending event approvals - group by event
+  const eventMap = new Map<string, PendingEventApproval>();
+  for (const approval of eventApprovals) {
+    const eventId = approval.eventId;
+    if (!eventMap.has(eventId)) {
+      const daysUntilDeadline = Math.ceil(
+        (approval.event.deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      eventMap.set(eventId, {
+        eventId,
+        eventTitle: approval.event.title,
+        eventType: approval.event.type,
+        deadline: approval.event.deadline,
+        childrenPending: [],
+        isUrgent: daysUntilDeadline <= 2,
+      });
+    }
+    eventMap.get(eventId)!.childrenPending.push(approval.student.user.firstName);
+  }
+
+  const pendingEvents = Array.from(eventMap.values());
+
   return {
     children,
     stats: {
@@ -273,6 +330,7 @@ async function fetchDashboardDataInternal(parentId: string): Promise<ParentDashb
       avgAttendance,
       totalPendingFees,
       unreadNotifications: 0,
+      pendingEventApprovals: eventApprovals.length,
     },
     announcements: announcements.map((a) => ({
       id: a.id,
@@ -280,6 +338,7 @@ async function fetchDashboardDataInternal(parentId: string): Promise<ParentDashb
       content: a.content || "",
       createdAt: a.createdAt,
     })),
+    pendingEvents,
   };
 }
 

@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Users, CheckSquare, DollarSign, Bell, GraduationCap, Calendar } from "lucide-react";
+import { Users, CheckSquare, DollarSign, Bell, GraduationCap, Calendar, CalendarCheck, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
@@ -13,7 +13,7 @@ interface DashboardContentProps {
 }
 
 export default function DashboardContent({ data }: DashboardContentProps) {
-  const { children, stats, announcements } = data;
+  const { children, stats, announcements, pendingEvents } = data;
 
   const statCards = [
     {
@@ -48,6 +48,14 @@ export default function DashboardContent({ data }: DashboardContentProps) {
       color: "text-purple-600",
       bgColor: "bg-purple-100",
     },
+    {
+      title: "Event Approvals",
+      value: stats.pendingEventApprovals.toString(),
+      icon: CalendarCheck,
+      description: "Pending responses",
+      color: stats.pendingEventApprovals > 0 ? "text-amber-600" : "text-green-600",
+      bgColor: stats.pendingEventApprovals > 0 ? "bg-amber-100" : "bg-green-100",
+    },
   ];
 
   const getAttendanceColor = (percentage: number) => {
@@ -73,7 +81,7 @@ export default function DashboardContent({ data }: DashboardContentProps) {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         {statCards.map((stat) => (
           <Card key={stat.title}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -164,6 +172,57 @@ export default function DashboardContent({ data }: DashboardContentProps) {
         </div>
       )}
 
+      {/* Pending Event Approvals */}
+      {pendingEvents.length > 0 && (
+        <Card className="border-amber-200 bg-amber-50/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-amber-800">
+              <AlertTriangle className="h-5 w-5" />
+              Action Required: Event Approvals
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {pendingEvents.map((event) => (
+                <div
+                  key={event.eventId}
+                  className={cn(
+                    "flex items-start justify-between p-3 rounded-lg border",
+                    event.isUrgent ? "bg-red-50 border-red-200" : "bg-white border-gray-200"
+                  )}
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{event.eventTitle}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {event.eventType}
+                      </Badge>
+                      {event.isUrgent && (
+                        <Badge variant="destructive" className="text-xs">
+                          Urgent
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      For: {event.childrenPending.join(", ")}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Deadline: {new Date(event.deadline).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <Link
+                    href="/parent/events"
+                    className="text-sm px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                  >
+                    Respond
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Content Grid */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
@@ -221,6 +280,12 @@ export default function DashboardContent({ data }: DashboardContentProps) {
               className="block w-full text-center py-2 px-4 rounded-md bg-secondary hover:bg-secondary/80 transition-colors"
             >
               View Grades
+            </Link>
+            <Link
+              href="/parent/events"
+              className="block w-full text-center py-2 px-4 rounded-md bg-secondary hover:bg-secondary/80 transition-colors"
+            >
+              View Events
             </Link>
           </CardContent>
         </Card>
