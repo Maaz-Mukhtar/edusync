@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, AttendanceStatus, AssessmentType, FeeFrequency } from "@prisma/client";
+import { PrismaClient, UserRole, AttendanceStatus, AssessmentType, FeeFrequency, EventType, ApprovalStatus } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { hash } from "bcryptjs";
@@ -16,6 +16,8 @@ async function main() {
   console.log("Starting seed...");
 
   // Clean up existing data
+  await prisma.eventApproval.deleteMany();
+  await prisma.event.deleteMany();
   await prisma.studentInsight.deleteMany();
   await prisma.announcement.deleteMany();
   await prisma.feeInvoice.deleteMany();
@@ -452,6 +454,190 @@ async function main() {
     },
   });
   console.log("Created announcement");
+
+  // Create Events for testing
+  const now = new Date();
+
+  // Event 1: Urgent trip (deadline in 1 day)
+  const urgentTrip = await prisma.event.create({
+    data: {
+      schoolId: school.id,
+      title: "Science Museum Field Trip",
+      description: "Educational visit to the National Science Museum. Students will explore exhibits on physics, biology, and technology. Lunch will be provided.",
+      type: EventType.TRIP,
+      location: "National Science Museum, Lahore",
+      startDate: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+      endDate: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+      fee: 1500,
+      capacity: 50,
+      deadline: new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000), // 1 day from now (URGENT)
+      targetAudience: ["Grade 6", "Grade 7"],
+      requiresApproval: true,
+      createdBy: adminUser.id,
+    },
+  });
+
+  // Event 2: Regular event (deadline in 5 days)
+  const sportsDay = await prisma.event.create({
+    data: {
+      schoolId: school.id,
+      title: "Annual Sports Day",
+      description: "Join us for our annual sports day celebration! Various athletic events, team competitions, and prizes await. Parents are welcome to attend.",
+      type: EventType.EVENT,
+      location: "School Sports Ground",
+      startDate: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000), // 14 days from now
+      endDate: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000),
+      fee: null, // Free event
+      capacity: 200,
+      deadline: new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000), // 5 days from now
+      targetAudience: ["All Grades"],
+      requiresApproval: true,
+      createdBy: adminUser.id,
+    },
+  });
+
+  // Event 3: Workshop with fee
+  const codingWorkshop = await prisma.event.create({
+    data: {
+      schoolId: school.id,
+      title: "Coding & Robotics Workshop",
+      description: "Two-day hands-on workshop on Python programming and basic robotics. Students will build and program their own simple robots.",
+      type: EventType.WORKSHOP,
+      location: "Computer Lab, Block A",
+      startDate: new Date(now.getTime() + 21 * 24 * 60 * 60 * 1000), // 21 days from now
+      endDate: new Date(now.getTime() + 22 * 24 * 60 * 60 * 1000), // 2-day event
+      fee: 3000,
+      capacity: 30,
+      deadline: new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000), // 10 days from now
+      targetAudience: ["Grade 7", "Grade 8"],
+      requiresApproval: true,
+      createdBy: adminUser.id,
+    },
+  });
+
+  // Event 4: Competition
+  const mathOlympiad = await prisma.event.create({
+    data: {
+      schoolId: school.id,
+      title: "Inter-School Math Olympiad",
+      description: "Represent our school in the regional Mathematics Olympiad competition. Selected students will compete against other schools.",
+      type: EventType.COMPETITION,
+      location: "City Convention Center",
+      startDate: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+      endDate: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+      fee: 500,
+      capacity: 20,
+      deadline: new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000), // 15 days from now
+      targetAudience: ["Grade 6", "Grade 7", "Grade 8"],
+      requiresApproval: true,
+      createdBy: adminUser.id,
+    },
+  });
+
+  // Event 5: Past event (already happened)
+  const pastEvent = await prisma.event.create({
+    data: {
+      schoolId: school.id,
+      title: "Cultural Day Celebration",
+      description: "Students showcased cultural performances and traditional dress from various regions.",
+      type: EventType.ACTIVITY,
+      location: "School Auditorium",
+      startDate: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000), // 14 days ago
+      endDate: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000),
+      fee: null,
+      capacity: 100,
+      deadline: new Date(now.getTime() - 21 * 24 * 60 * 60 * 1000), // 21 days ago
+      targetAudience: ["All Grades"],
+      requiresApproval: true,
+      createdBy: adminUser.id,
+    },
+  });
+
+  console.log("Created 5 events");
+
+  // Create Event Approvals for parents
+  // We'll create various approval statuses to test different scenarios
+
+  // Get all parent-student relationships
+  const parentStudentLinks = await prisma.parentStudent.findMany({
+    include: {
+      parent: true,
+      student: true,
+    },
+  });
+
+  for (const link of parentStudentLinks) {
+    const studentIndex = students.findIndex(s => s.profile.id === link.studentId);
+
+    // Event 1 (Urgent Trip): Mix of pending and some approved
+    if (studentIndex < 6) { // First 6 students
+      await prisma.eventApproval.create({
+        data: {
+          eventId: urgentTrip.id,
+          studentId: link.studentId,
+          parentId: link.parentId,
+          status: studentIndex < 3 ? ApprovalStatus.PENDING : ApprovalStatus.APPROVED,
+          remarks: studentIndex >= 3 ? "Looking forward to this educational trip!" : null,
+          respondedAt: studentIndex >= 3 ? new Date() : null,
+        },
+      });
+    }
+
+    // Event 2 (Sports Day): All pending for testing
+    await prisma.eventApproval.create({
+      data: {
+        eventId: sportsDay.id,
+        studentId: link.studentId,
+        parentId: link.parentId,
+        status: ApprovalStatus.PENDING,
+      },
+    });
+
+    // Event 3 (Workshop): Some pending, some approved, some declined
+    if (studentIndex < 8) {
+      await prisma.eventApproval.create({
+        data: {
+          eventId: codingWorkshop.id,
+          studentId: link.studentId,
+          parentId: link.parentId,
+          status: studentIndex < 4
+            ? ApprovalStatus.PENDING
+            : studentIndex < 6
+              ? ApprovalStatus.APPROVED
+              : ApprovalStatus.DECLINED,
+          remarks: studentIndex >= 6 ? "Unable to attend due to prior commitment." :
+                   studentIndex >= 4 ? "Excited about robotics!" : null,
+          respondedAt: studentIndex >= 4 ? new Date() : null,
+        },
+      });
+    }
+
+    // Event 4 (Math Olympiad): First 5 students only, all pending
+    if (studentIndex < 5) {
+      await prisma.eventApproval.create({
+        data: {
+          eventId: mathOlympiad.id,
+          studentId: link.studentId,
+          parentId: link.parentId,
+          status: ApprovalStatus.PENDING,
+        },
+      });
+    }
+
+    // Event 5 (Past Event): All approved (historical data)
+    await prisma.eventApproval.create({
+      data: {
+        eventId: pastEvent.id,
+        studentId: link.studentId,
+        parentId: link.parentId,
+        status: ApprovalStatus.APPROVED,
+        remarks: "Thank you for organizing this wonderful event!",
+        respondedAt: new Date(now.getTime() - 25 * 24 * 60 * 60 * 1000),
+      },
+    });
+  }
+
+  console.log("Created event approvals for all parent-student pairs");
 
   console.log("\n✅ Seed completed successfully!");
   console.log("\n📋 Demo Login Credentials:");
