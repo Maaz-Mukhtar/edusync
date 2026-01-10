@@ -3,7 +3,7 @@
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { UserRole } from "@prisma/client";
 
 // ============================================
@@ -92,13 +92,6 @@ export async function getConversationMessages(conversationId: string): Promise<C
     data: { isRead: true },
   });
 
-  // Invalidate cache
-  if (isTeacher) {
-    revalidateTag(`teacher-${conversation.teacherId}-messages`, "max");
-  } else {
-    revalidateTag(`parent-${conversation.parentId}-messages`, "max");
-  }
-
   return {
     id: conversation.id,
     studentName: `${conversation.student.user.firstName} ${conversation.student.user.lastName}`,
@@ -166,9 +159,7 @@ export async function sendMessage(
       data: { updatedAt: new Date() },
     });
 
-    // Invalidate caches
-    revalidateTag(`teacher-${conversation.teacherId}-messages`, "max");
-    revalidateTag(`parent-${conversation.parentId}-messages`, "max");
+    // Invalidate page caches
     revalidatePath("/teacher/messages");
     revalidatePath("/parent/messages");
 
@@ -259,8 +250,6 @@ export async function createConversation(
         data: { updatedAt: new Date() },
       });
 
-      revalidateTag(`teacher-${teacherId}-messages`, "max");
-      revalidateTag(`parent-${parentId}-messages`, "max");
       revalidatePath("/teacher/messages");
       revalidatePath("/parent/messages");
 
@@ -285,8 +274,6 @@ export async function createConversation(
       },
     });
 
-    revalidateTag(`teacher-${teacherId}-messages`, "max");
-    revalidateTag(`parent-${parentId}-messages`, "max");
     revalidatePath("/teacher/messages");
     revalidatePath("/parent/messages");
 

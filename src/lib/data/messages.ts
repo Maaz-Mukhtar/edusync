@@ -1,7 +1,6 @@
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
-import { unstable_cache } from "next/cache";
 import { UserRole } from "@prisma/client";
 
 // ============================================
@@ -143,19 +142,9 @@ async function fetchTeacherConversationsInternal(teacherId: string): Promise<Con
   }));
 }
 
-const getCachedTeacherConversations = (teacherId: string) =>
-  unstable_cache(
-    () => fetchTeacherConversationsInternal(teacherId),
-    [`teacher-conversations-${teacherId}`],
-    {
-      revalidate: 30,
-      tags: [`teacher-${teacherId}-messages`],
-    }
-  )();
-
 export async function getTeacherConversations(): Promise<ConversationWithDetails[]> {
   const { profile } = await getTeacherInfo();
-  return getCachedTeacherConversations(profile.id);
+  return fetchTeacherConversationsInternal(profile.id);
 }
 
 // Get students that teacher can message (from their sections)
@@ -271,19 +260,9 @@ async function fetchParentConversationsInternal(parentId: string): Promise<Conve
   }));
 }
 
-const getCachedParentConversations = (parentId: string) =>
-  unstable_cache(
-    () => fetchParentConversationsInternal(parentId),
-    [`parent-conversations-${parentId}`],
-    {
-      revalidate: 30,
-      tags: [`parent-${parentId}-messages`],
-    }
-  )();
-
 export async function getParentConversations(): Promise<ConversationWithDetails[]> {
   const { profile } = await getParentInfo();
-  return getCachedParentConversations(profile.id);
+  return fetchParentConversationsInternal(profile.id);
 }
 
 // Get teachers that parent can message (teachers of their children)
