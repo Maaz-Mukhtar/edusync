@@ -28,13 +28,13 @@ import {
 import { MessageSquare, Plus, Send, User } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { ConversationWithDetails } from "@/lib/data/messages";
 import {
-  ConversationWithDetails,
   MessageWithSender,
   getConversationMessages,
   sendMessage,
   createConversation,
-} from "@/lib/data/messages";
+} from "@/lib/actions/messages";
 import { cn } from "@/lib/utils";
 
 interface StudentForMessaging {
