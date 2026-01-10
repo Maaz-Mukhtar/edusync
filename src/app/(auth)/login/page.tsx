@@ -46,7 +46,7 @@ function LoginForm() {
 
     try {
       // Get subdomain from current host
-      const subdomain = getSubdomainFromHost(window.location.host) || "demo";
+      const subdomain = getSubdomainFromHost(window.location.host) || "sns";
 
       const result = await signIn("credentials", {
         email: loginMethod === "email" ? data.email : undefined,
