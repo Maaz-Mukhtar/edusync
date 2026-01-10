@@ -160,6 +160,7 @@ model StudentProfile {
   feeInvoices    FeeInvoice[]
   insights       StudentInsight[]
   eventApprovals EventApproval[]
+  conversations  Conversation[]
 
   @@index([sectionId])
 }
@@ -177,6 +178,7 @@ model TeacherProfile {
   subjectsTaught   TeacherSubject[]
   attendancesTaken Attendance[]
   assessments      Assessment[]
+  conversations    Conversation[]
 }
 
 model ParentProfile {
@@ -188,6 +190,7 @@ model ParentProfile {
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   children       ParentStudent[]
   eventApprovals EventApproval[]
+  conversations  Conversation[]
 }
 
 model ParentStudent {
@@ -451,6 +454,46 @@ model Announcement {
 
   @@index([schoolId])
   @@index([publishAt])
+}
+
+// ==================== MESSAGING ====================
+
+model Conversation {
+  id         String   @id @default(cuid())
+  schoolId   String
+  studentId  String   // The student this conversation is about
+  teacherId  String   // Teacher profile ID
+  parentId   String   // Parent profile ID
+  subject    String?  // Optional subject/topic of conversation
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  student  StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  teacher  TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  parent   ParentProfile  @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([studentId, teacherId, parentId])
+  @@index([schoolId])
+  @@index([teacherId])
+  @@index([parentId])
+  @@index([studentId])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  senderId       String   // User ID of sender
+  senderRole     UserRole // TEACHER or PARENT
+  content        String   @db.Text
+  isRead         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
 }
 
 // ==================== AI FEATURES ====================

@@ -229,8 +229,8 @@ export async function createEvent(data: EventFormData): Promise<{ success: boole
     revalidatePath("/admin/events");
 
     // Revalidate parent portal caches so they see new events immediately
-    revalidateTag("parent-events");
-    revalidateTag("parent-dashboard");
+    revalidateTag("parent-events", "max");
+    revalidateTag("parent-dashboard", "max");
 
     return { success: true, eventId: event.id };
   } catch (error) {
@@ -273,8 +273,8 @@ export async function updateEvent(
     });
 
     revalidatePath("/admin/events");
-    revalidateTag("parent-events");
-    revalidateTag("parent-dashboard");
+    revalidateTag("parent-events", "max");
+    revalidateTag("parent-dashboard", "max");
     return { success: true };
   } catch (error) {
     console.error("Error updating event:", error);
@@ -306,8 +306,8 @@ export async function deleteEvent(eventId: string): Promise<{ success: boolean; 
     });
 
     revalidatePath("/admin/events");
-    revalidateTag("parent-events");
-    revalidateTag("parent-dashboard");
+    revalidateTag("parent-events", "max");
+    revalidateTag("parent-dashboard", "max");
     return { success: true };
   } catch (error) {
     console.error("Error deleting event:", error);
