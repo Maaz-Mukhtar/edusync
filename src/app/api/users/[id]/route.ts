@@ -163,14 +163,17 @@ export async function PUT(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    // Normalize email to lowercase
+    const normalizedEmail = validatedData.email?.toLowerCase();
+
     // Check for duplicate email/phone
-    if (validatedData.email || validatedData.phone) {
+    if (normalizedEmail || validatedData.phone) {
       const duplicate = await prisma.user.findFirst({
         where: {
           id: { not: id },
           schoolId: session.user.schoolId,
           OR: [
-            validatedData.email ? { email: validatedData.email } : {},
+            normalizedEmail ? { email: normalizedEmail } : {},
             validatedData.phone ? { phone: validatedData.phone } : {},
           ].filter((c) => Object.keys(c).length > 0),
         },
@@ -186,7 +189,7 @@ export async function PUT(
 
     // Prepare update data
     const updateData: Record<string, unknown> = {};
-    if (validatedData.email !== undefined) updateData.email = validatedData.email;
+    if (validatedData.email !== undefined) updateData.email = normalizedEmail;
     if (validatedData.phone !== undefined) updateData.phone = validatedData.phone;
     if (validatedData.firstName) updateData.firstName = validatedData.firstName;
     if (validatedData.lastName) updateData.lastName = validatedData.lastName;

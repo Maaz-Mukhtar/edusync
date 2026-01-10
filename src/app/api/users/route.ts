@@ -159,12 +159,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Normalize email to lowercase
+    const normalizedEmail = validatedData.email?.toLowerCase();
+
     // Check for existing user with same email or phone
     const existingUser = await prisma.user.findFirst({
       where: {
         schoolId: session.user.schoolId,
         OR: [
-          validatedData.email ? { email: validatedData.email } : {},
+          normalizedEmail ? { email: normalizedEmail } : {},
           validatedData.phone ? { phone: validatedData.phone } : {},
         ].filter((c) => Object.keys(c).length > 0),
       },
@@ -191,7 +194,7 @@ export async function POST(request: NextRequest) {
     const user = await prisma.user.create({
       data: {
         schoolId: session.user.schoolId,
-        email: validatedData.email,
+        email: normalizedEmail,
         phone: validatedData.phone,
         passwordHash,
         role: validatedData.role,

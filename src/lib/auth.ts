@@ -46,7 +46,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         const password = credentials.password as string;
         const schoolSubdomain = credentials.schoolSubdomain as string;
-        const email = credentials.email as string | undefined;
+        // Normalize email to lowercase for case-insensitive comparison
+        const email = (credentials.email as string | undefined)?.toLowerCase();
         const phone = credentials.phone as string | undefined;
 
         if (!email && !phone) {

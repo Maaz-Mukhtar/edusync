@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
           const user = await tx.user.create({
             data: {
               schoolId: session.user.schoolId,
-              email: validatedData.email,
+              email: validatedData.email.toLowerCase(),
               passwordHash: hashedPassword,
               firstName: validatedData.firstName,
               lastName: validatedData.lastName,
