@@ -214,7 +214,8 @@ export async function GET(request: NextRequest) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const sections = await prisma.sectionTeacher.findMany({
+    // Get sections where teacher is class teacher
+    const classTeacherSections = await prisma.sectionTeacher.findMany({
       where: { teacherId: teacherProfile.id },
       include: {
         section: {
@@ -230,19 +231,56 @@ export async function GET(request: NextRequest) {
           },
         },
       },
-      orderBy: [
-        { section: { class: { displayOrder: "asc" } } },
-        { section: { name: "asc" } },
-      ],
     });
 
+    // Get sections where teacher teaches subjects
+    const subjectTeacherSections = await prisma.sectionSubjectTeacher.findMany({
+      where: { teacherId: teacherProfile.id },
+      include: {
+        section: {
+          include: {
+            class: true,
+            _count: {
+              select: { students: true },
+            },
+            attendances: {
+              where: { date: today },
+              select: { id: true },
+            },
+          },
+        },
+      },
+    });
+
+    // Combine and deduplicate sections
+    const classTeacherSectionIds = new Set(classTeacherSections.map(ct => ct.sectionId));
+    const allSections = new Map<string, { section: typeof classTeacherSections[0]["section"]; isClassTeacher: boolean }>();
+
+    for (const ct of classTeacherSections) {
+      allSections.set(ct.sectionId, { section: ct.section, isClassTeacher: true });
+    }
+
+    for (const st of subjectTeacherSections) {
+      if (!allSections.has(st.sectionId)) {
+        allSections.set(st.sectionId, { section: st.section, isClassTeacher: false });
+      }
+    }
+
+    // Sort and format sections
+    const sectionsArray = Array.from(allSections.values())
+      .sort((a, b) => {
+        const orderDiff = a.section.class.displayOrder - b.section.class.displayOrder;
+        if (orderDiff !== 0) return orderDiff;
+        return a.section.name.localeCompare(b.section.name);
+      });
+
     return NextResponse.json({
-      sections: sections.map((st) => ({
-        id: st.section.id,
-        name: `${st.section.class.name} - ${st.section.name}`,
-        studentCount: st.section._count.students,
-        isMarkedToday: st.section.attendances.length > 0,
-        isClassTeacher: st.isClassTeacher,
+      sections: sectionsArray.map((item) => ({
+        id: item.section.id,
+        name: `${item.section.class.name} - ${item.section.name}`,
+        studentCount: item.section._count.students,
+        isMarkedToday: item.section.attendances.length > 0,
+        isClassTeacher: item.isClassTeacher,
       })),
     });
   } catch (error) {

@@ -53,7 +53,7 @@ async function getDashboardStats(schoolId: string) {
     }),
     // Total subjects
     prisma.subject.count({
-      where: { schoolId },
+      where: { class: { schoolId } },
     }),
     // Pending invoices
     prisma.feeInvoice.aggregate({

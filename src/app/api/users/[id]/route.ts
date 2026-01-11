@@ -70,7 +70,7 @@ export async function GET(
         },
         teacherProfile: {
           include: {
-            sections: {
+            classTeacherOf: {
               include: {
                 section: {
                   include: {
@@ -79,9 +79,23 @@ export async function GET(
                 },
               },
             },
+            sectionSubjects: {
+              include: {
+                section: {
+                  include: {
+                    class: true,
+                  },
+                },
+                subject: true,
+              },
+            },
             subjectsTaught: {
               include: {
-                subject: true,
+                subject: {
+                  include: {
+                    class: true,
+                  },
+                },
               },
             },
           },

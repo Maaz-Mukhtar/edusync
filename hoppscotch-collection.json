@@ -1,0 +1,590 @@
+{
+  "v": 1,
+  "name": "EduSync API",
+  "folders": [
+    {
+      "name": "Authentication",
+      "folders": [],
+      "requests": [
+        {
+          "v": "1",
+          "name": "Login",
+          "method": "POST",
+          "endpoint": "<<BASE_URL>>/api/auth/callback/credentials",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"email\": \"admin@school.com\",\n  \"password\": \"password123\"\n}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "folders": [],
+      "requests": [
+        {
+          "v": "1",
+          "name": "List Users",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/users",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Create User",
+          "method": "POST",
+          "endpoint": "<<BASE_URL>>/api/users",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"email\": \"teacher@school.com\",\n  \"password\": \"password123\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"role\": \"TEACHER\"\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Get User by ID",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/users/:id",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Update User",
+          "method": "PUT",
+          "endpoint": "<<BASE_URL>>/api/users/:id",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe\"\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Delete User",
+          "method": "DELETE",
+          "endpoint": "<<BASE_URL>>/api/users/:id",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Import Users",
+          "method": "POST",
+          "endpoint": "<<BASE_URL>>/api/users/import",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"users\": []\n}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Teachers",
+      "folders": [],
+      "requests": [
+        {
+          "v": "1",
+          "name": "List Teachers",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/teachers",
+          "headers": []
+        }
+      ]
+    },
+    {
+      "name": "Students",
+      "folders": [],
+      "requests": [
+        {
+          "v": "1",
+          "name": "List Students",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/students",
+          "headers": []
+        }
+      ]
+    },
+    {
+      "name": "Parents",
+      "folders": [],
+      "requests": [
+        {
+          "v": "1",
+          "name": "List Parents",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/parents",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "List Parent-Student Links",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/parent-students",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Link Parent to Student",
+          "method": "POST",
+          "endpoint": "<<BASE_URL>>/api/parent-students",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"parentId\": \"parent-profile-id\",\n  \"studentId\": \"student-profile-id\",\n  \"relationship\": \"FATHER\"\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Remove Parent-Student Link",
+          "method": "DELETE",
+          "endpoint": "<<BASE_URL>>/api/parent-students/:id",
+          "headers": []
+        }
+      ]
+    },
+    {
+      "name": "Classes",
+      "folders": [],
+      "requests": [
+        {
+          "v": "1",
+          "name": "List Classes",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/classes",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Create Class",
+          "method": "POST",
+          "endpoint": "<<BASE_URL>>/api/classes",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"name\": \"Grade 7\",\n  \"displayOrder\": 7,\n  \"sections\": [\n    { \"name\": \"A\", \"capacity\": 30 },\n    { \"name\": \"B\", \"capacity\": 30 }\n  ]\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Get Class by ID",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/classes/:id",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Update Class",
+          "method": "PUT",
+          "endpoint": "<<BASE_URL>>/api/classes/:id",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"name\": \"Grade 8\"\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Delete Class",
+          "method": "DELETE",
+          "endpoint": "<<BASE_URL>>/api/classes/:id",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Add Section to Class",
+          "method": "POST",
+          "endpoint": "<<BASE_URL>>/api/classes/:id/sections",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"name\": \"C\",\n  \"capacity\": 25\n}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sections",
+      "folders": [],
+      "requests": [
+        {
+          "v": "1",
+          "name": "List Sections",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/sections?classId=:classId",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Update Section",
+          "method": "PUT",
+          "endpoint": "<<BASE_URL>>/api/sections/:id",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"name\": \"A\",\n  \"capacity\": 35\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Delete Section",
+          "method": "DELETE",
+          "endpoint": "<<BASE_URL>>/api/sections/:id",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "List Section Teachers",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/sections/:id/teachers",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Assign Teacher to Section",
+          "method": "POST",
+          "endpoint": "<<BASE_URL>>/api/sections/:id/teachers",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"teacherId\": \"teacher-profile-id\",\n  \"isClassTeacher\": true\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Remove Teacher from Section",
+          "method": "DELETE",
+          "endpoint": "<<BASE_URL>>/api/sections/:id/teachers?teacherId=:teacherId",
+          "headers": []
+        }
+      ]
+    },
+    {
+      "name": "Subjects",
+      "folders": [],
+      "requests": [
+        {
+          "v": "1",
+          "name": "List Subjects",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/subjects",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Create Subject",
+          "method": "POST",
+          "endpoint": "<<BASE_URL>>/api/subjects",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"name\": \"Mathematics\",\n  \"code\": \"MATH\",\n  \"color\": \"#3b82f6\"\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Get Subject by ID",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/subjects/:id",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Update Subject",
+          "method": "PUT",
+          "endpoint": "<<BASE_URL>>/api/subjects/:id",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"name\": \"Advanced Mathematics\"\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Delete Subject",
+          "method": "DELETE",
+          "endpoint": "<<BASE_URL>>/api/subjects/:id",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "List Subject Teachers",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/subjects/:id/teachers",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Assign Teacher to Subject",
+          "method": "POST",
+          "endpoint": "<<BASE_URL>>/api/subjects/:id/teachers",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"teacherId\": \"teacher-profile-id\"\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Remove Teacher from Subject",
+          "method": "DELETE",
+          "endpoint": "<<BASE_URL>>/api/subjects/:id/teachers?teacherId=:teacherId",
+          "headers": []
+        }
+      ]
+    },
+    {
+      "name": "Fee Management",
+      "folders": [],
+      "requests": [
+        {
+          "v": "1",
+          "name": "List Fee Structures",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/fee-structures",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Create Fee Structure",
+          "method": "POST",
+          "endpoint": "<<BASE_URL>>/api/fee-structures",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"name\": \"Tuition Fee - Grade 7\",\n  \"amount\": 15000,\n  \"frequency\": \"MONTHLY\",\n  \"classId\": \"class-id\"\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Get Fee Structure",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/fee-structures/:id",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Update Fee Structure",
+          "method": "PUT",
+          "endpoint": "<<BASE_URL>>/api/fee-structures/:id",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"amount\": 16000\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Delete Fee Structure",
+          "method": "DELETE",
+          "endpoint": "<<BASE_URL>>/api/fee-structures/:id",
+          "headers": []
+        }
+      ]
+    },
+    {
+      "name": "Invoices",
+      "folders": [],
+      "requests": [
+        {
+          "v": "1",
+          "name": "List Invoices",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/invoices",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Create Invoice",
+          "method": "POST",
+          "endpoint": "<<BASE_URL>>/api/invoices",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"studentId\": \"student-id\",\n  \"feeStructureId\": \"fee-structure-id\",\n  \"amount\": 15000,\n  \"dueDate\": \"2024-02-01\"\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Get Invoice",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/invoices/:id",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Update Invoice",
+          "method": "PUT",
+          "endpoint": "<<BASE_URL>>/api/invoices/:id",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"status\": \"PAID\"\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Delete Invoice",
+          "method": "DELETE",
+          "endpoint": "<<BASE_URL>>/api/invoices/:id",
+          "headers": []
+        }
+      ]
+    },
+    {
+      "name": "Teacher Portal",
+      "folders": [],
+      "requests": [
+        {
+          "v": "1",
+          "name": "Teacher Dashboard",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/teacher/dashboard",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Teacher Classes",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/teacher/classes",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "List Assessments",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/teacher/assessments",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Create Assessment",
+          "method": "POST",
+          "endpoint": "<<BASE_URL>>/api/teacher/assessments",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"title\": \"Chapter 5 Test\",\n  \"type\": \"TEST\",\n  \"subjectId\": \"subject-id\",\n  \"sectionId\": \"section-id\",\n  \"totalMarks\": 50,\n  \"date\": \"2024-02-15\"\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Get Assessment",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/teacher/assessments/:id",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Update Assessment",
+          "method": "PUT",
+          "endpoint": "<<BASE_URL>>/api/teacher/assessments/:id",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"title\": \"Updated Title\"\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Publish Assessment",
+          "method": "PATCH",
+          "endpoint": "<<BASE_URL>>/api/teacher/assessments/:id",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"isPublished\": true\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Delete Assessment",
+          "method": "DELETE",
+          "endpoint": "<<BASE_URL>>/api/teacher/assessments/:id",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Get Attendance",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/teacher/attendance?sectionId=:sectionId&date=2024-02-15",
+          "headers": []
+        },
+        {
+          "v": "1",
+          "name": "Mark Attendance",
+          "method": "POST",
+          "endpoint": "<<BASE_URL>>/api/teacher/attendance",
+          "headers": [
+            { "key": "Content-Type", "value": "application/json", "active": true }
+          ],
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"sectionId\": \"section-id\",\n  \"date\": \"2024-02-15\",\n  \"records\": [\n    { \"studentId\": \"student-1\", \"status\": \"PRESENT\" },\n    { \"studentId\": \"student-2\", \"status\": \"ABSENT\" }\n  ]\n}"
+          }
+        },
+        {
+          "v": "1",
+          "name": "Get Gradebook",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/teacher/gradebook?assessmentId=:assessmentId",
+          "headers": []
+        }
+      ]
+    },
+    {
+      "name": "Admin Dashboard",
+      "folders": [],
+      "requests": [
+        {
+          "v": "1",
+          "name": "Admin Dashboard Stats",
+          "method": "GET",
+          "endpoint": "<<BASE_URL>>/api/dashboard/admin",
+          "headers": []
+        }
+      ]
+    }
+  ],
+  "requests": []
+}

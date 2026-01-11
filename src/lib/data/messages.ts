@@ -151,13 +151,26 @@ export async function getTeacherConversations(): Promise<ConversationWithDetails
 export async function getTeacherStudentsForMessaging() {
   const { profile } = await getTeacherInfo();
 
+  // Get sections where teacher is class teacher
+  const classTeacherSections = await prisma.sectionTeacher.findMany({
+    where: { teacherId: profile.id },
+    select: { sectionId: true },
+  });
+
+  // Get sections where teacher teaches subjects
+  const subjectTeacherSections = await prisma.sectionSubjectTeacher.findMany({
+    where: { teacherId: profile.id },
+    select: { sectionId: true },
+  });
+
+  const sectionIds = [...new Set([
+    ...classTeacherSections.map(s => s.sectionId),
+    ...subjectTeacherSections.map(s => s.sectionId),
+  ])];
+
   const students = await prisma.studentProfile.findMany({
     where: {
-      section: {
-        teachers: {
-          some: { teacherId: profile.id },
-        },
-      },
+      sectionId: { in: sectionIds },
     },
     include: {
       user: { select: { firstName: true, lastName: true } },
@@ -269,7 +282,7 @@ export async function getParentConversations(): Promise<ConversationWithDetails[
 export async function getParentTeachersForMessaging() {
   const { profile } = await getParentInfo();
 
-  // Get parent's children and their teachers
+  // Get parent's children with their sections
   const children = await prisma.parentStudent.findMany({
     where: { parentId: profile.id },
     include: {
@@ -279,7 +292,16 @@ export async function getParentTeachersForMessaging() {
           section: {
             include: {
               class: { select: { name: true } },
-              teachers: {
+              classTeacher: {
+                include: {
+                  teacher: {
+                    include: {
+                      user: { select: { firstName: true, lastName: true } },
+                    },
+                  },
+                },
+              },
+              subjectTeachers: {
                 include: {
                   teacher: {
                     include: {
@@ -295,17 +317,39 @@ export async function getParentTeachersForMessaging() {
     },
   });
 
-  return children.map((c) => ({
-    studentId: c.student.id,
-    studentName: `${c.student.user.firstName} ${c.student.user.lastName}`,
-    className: c.student.section.class.name,
-    sectionName: c.student.section.name,
-    teachers: c.student.section.teachers.map((st) => ({
-      id: st.teacher.id,
-      name: `${st.teacher.user.firstName} ${st.teacher.user.lastName}`,
-      isClassTeacher: st.isClassTeacher,
-    })),
-  }));
+  return children.map((c) => {
+    // Combine class teacher and subject teachers
+    const teachersMap = new Map<string, { id: string; name: string; isClassTeacher: boolean }>();
+
+    // Add class teacher if exists
+    if (c.student.section.classTeacher) {
+      const ct = c.student.section.classTeacher;
+      teachersMap.set(ct.teacherId, {
+        id: ct.teacher.id,
+        name: `${ct.teacher.user.firstName} ${ct.teacher.user.lastName}`,
+        isClassTeacher: true,
+      });
+    }
+
+    // Add subject teachers
+    for (const st of c.student.section.subjectTeachers) {
+      if (!teachersMap.has(st.teacherId)) {
+        teachersMap.set(st.teacherId, {
+          id: st.teacher.id,
+          name: `${st.teacher.user.firstName} ${st.teacher.user.lastName}`,
+          isClassTeacher: false,
+        });
+      }
+    }
+
+    return {
+      studentId: c.student.id,
+      studentName: `${c.student.user.firstName} ${c.student.user.lastName}`,
+      className: c.student.section.class.name,
+      sectionName: c.student.section.name,
+      teachers: Array.from(teachersMap.values()),
+    };
+  });
 }
 
 // Get unread message count for dashboard

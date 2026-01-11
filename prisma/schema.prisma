@@ -63,7 +63,6 @@ model School {
 
   users         User[]
   classes       Class[]
-  subjects      Subject[]
   feeStructures FeeStructure[]
   announcements Announcement[]
   academicYears AcademicYear[]
@@ -174,8 +173,9 @@ model TeacherProfile {
   specialization String?
 
   user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sections         SectionTeacher[]
-  subjectsTaught   TeacherSubject[]
+  classTeacherOf   SectionTeacher[] // Sections where this teacher is class teacher
+  subjectsTaught   TeacherSubject[] // Subjects this teacher can teach (class-level assignment)
+  sectionSubjects  SectionSubjectTeacher[] // Section-level subject assignments
   attendancesTaken Attendance[]
   assessments      Assessment[]
   conversations    Conversation[]
@@ -244,6 +244,7 @@ model Class {
 
   school        School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   sections      Section[]
+  subjects      Subject[]      // Subjects taught in this class
   feeStructures FeeStructure[]
 
   @@unique([schoolId, name])
@@ -256,46 +257,63 @@ model Section {
   name     String
   capacity Int?
 
-  class       Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
-  students    StudentProfile[]
-  teachers    SectionTeacher[]
-  timetable   TimetableSlot[]
-  attendances Attendance[]
-  assessments Assessment[]
+  class           Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
+  students        StudentProfile[]
+  classTeacher    SectionTeacher?  // One class teacher per section
+  subjectTeachers SectionSubjectTeacher[] // Subject-wise teacher assignments
+  timetable       TimetableSlot[]
+  attendances     Attendance[]
+  assessments     Assessment[]
 
   @@unique([classId, name])
   @@index([classId])
 }
 
 model Subject {
-  id       String  @id @default(cuid())
-  schoolId String
-  name     String
-  code     String?
-  color    String?
+  id      String  @id @default(cuid())
+  classId String
+  name    String
+  code    String?
+  color   String?
 
-  school      School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  teachers    TeacherSubject[]
+  class       Class                  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teachers    TeacherSubject[]       // Teachers who can teach this subject
   timetable   TimetableSlot[]
   assessments Assessment[]
+  sectionTeachers SectionSubjectTeacher[] // Teachers assigned to teach this subject in specific sections
 
-  @@unique([schoolId, name])
-  @@index([schoolId])
+  @@unique([classId, name])
+  @@index([classId])
 }
 
 // ==================== JUNCTION TABLES ====================
 
+// Class teacher assignment - one per section
 model SectionTeacher {
-  id             String  @id @default(cuid())
-  sectionId      String
-  teacherId      String
-  isClassTeacher Boolean @default(false)
+  id        String @id @default(cuid())
+  sectionId String @unique // Only one class teacher per section
+  teacherId String
 
   section Section        @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   teacher TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
 
-  @@unique([sectionId, teacherId])
+  @@index([teacherId])
+}
+
+// Subject teacher assignment per section
+model SectionSubjectTeacher {
+  id        String @id @default(cuid())
+  sectionId String
+  subjectId String
+  teacherId String
+
+  section Section        @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([sectionId, subjectId]) // One teacher per subject per section
   @@index([sectionId])
+  @@index([subjectId])
   @@index([teacherId])
 }
 

@@ -70,27 +70,35 @@ async function fetchDashboardDataInternal(teacherId: string): Promise<DashboardD
   today.setHours(0, 0, 0, 0);
   const dayOfWeek = today.getDay();
 
+  // Get sections where teacher is class teacher
+  const classTeacherSections = await prisma.sectionTeacher.findMany({
+    where: { teacherId },
+    select: { sectionId: true },
+  });
+
+  // Get sections where teacher teaches subjects
+  const subjectTeacherSections = await prisma.sectionSubjectTeacher.findMany({
+    where: { teacherId },
+    select: { sectionId: true },
+  });
+
+  // Combine section IDs
+  const allSectionIds = [...new Set([
+    ...classTeacherSections.map(s => s.sectionId),
+    ...subjectTeacherSections.map(s => s.sectionId),
+  ])];
+
   // Run queries in parallel
   const [
-    assignedSections,
     todaySchedule,
-    pendingAttendance,
+    pendingAttendanceSections,
     recentAssessments,
     totalStudents,
   ] = await Promise.all([
-    // Get assigned sections count
-    prisma.sectionTeacher.count({
-      where: { teacherId },
-    }),
-
-    // Get today's schedule
+    // Get today's schedule for teacher's sections
     prisma.timetableSlot.findMany({
       where: {
-        section: {
-          teachers: {
-            some: { teacherId },
-          },
-        },
+        sectionId: { in: allSectionIds },
         dayOfWeek,
       },
       include: {
@@ -105,25 +113,19 @@ async function fetchDashboardDataInternal(teacherId: string): Promise<DashboardD
     }),
 
     // Get sections without attendance today
-    prisma.sectionTeacher.findMany({
+    prisma.section.findMany({
       where: {
-        teacherId,
-        section: {
-          attendances: {
-            none: {
-              date: today,
-            },
+        id: { in: allSectionIds },
+        attendances: {
+          none: {
+            date: today,
           },
         },
       },
       include: {
-        section: {
-          include: {
-            class: true,
-            _count: {
-              select: { students: true },
-            },
-          },
+        class: true,
+        _count: {
+          select: { students: true },
         },
       },
     }),
@@ -152,11 +154,7 @@ async function fetchDashboardDataInternal(teacherId: string): Promise<DashboardD
     // Get total students across assigned sections
     prisma.studentProfile.count({
       where: {
-        section: {
-          teachers: {
-            some: { teacherId },
-          },
-        },
+        sectionId: { in: allSectionIds },
       },
     }),
   ]);
@@ -168,10 +166,10 @@ async function fetchDashboardDataInternal(teacherId: string): Promise<DashboardD
 
   return {
     stats: {
-      assignedSections,
+      assignedSections: allSectionIds.length,
       totalStudents,
       todayClasses: todaySchedule.length,
-      pendingAttendance: pendingAttendance.length,
+      pendingAttendance: pendingAttendanceSections.length,
       assessmentsToGrade: assessmentsNeedingGrading.length,
     },
     todaySchedule: todaySchedule.map((slot) => ({
@@ -183,10 +181,10 @@ async function fetchDashboardDataInternal(teacherId: string): Promise<DashboardD
       subject: slot.subject.name,
       subjectColor: slot.subject.color,
     })),
-    pendingAttendance: pendingAttendance.map((st) => ({
-      sectionId: st.section.id,
-      section: `${st.section.class.name} - ${st.section.name}`,
-      studentCount: st.section._count.students,
+    pendingAttendance: pendingAttendanceSections.map((section) => ({
+      sectionId: section.id,
+      section: `${section.class.name} - ${section.name}`,
+      studentCount: section._count.students,
     })),
     recentAssessments: recentAssessments.map((a) => ({
       id: a.id,
@@ -248,54 +246,103 @@ export interface ClassesData {
 
 // Internal function to fetch classes data (cacheable)
 async function fetchClassesDataInternal(teacherId: string): Promise<ClassesData> {
-  const [sectionTeachers, subjects] = await Promise.all([
-    prisma.sectionTeacher.findMany({
-      where: { teacherId },
-      include: {
-        section: {
-          include: {
-            class: true,
-            students: {
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    firstName: true,
-                    lastName: true,
-                    email: true,
-                    avatar: true,
-                  },
+  // Get sections where teacher is class teacher
+  const classTeacherSections = await prisma.sectionTeacher.findMany({
+    where: { teacherId },
+    include: {
+      section: {
+        include: {
+          class: true,
+          students: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                  avatar: true,
                 },
               },
-              orderBy: { rollNumber: "asc" },
             },
-            _count: {
-              select: { students: true },
-            },
+            orderBy: { rollNumber: "asc" },
+          },
+          _count: {
+            select: { students: true },
           },
         },
       },
-    }),
-    prisma.subject.findMany({
-      where: {
-        teachers: {
-          some: { teacherId },
+    },
+  });
+
+  // Get sections where teacher teaches subjects
+  const subjectTeacherSections = await prisma.sectionSubjectTeacher.findMany({
+    where: { teacherId },
+    include: {
+      section: {
+        include: {
+          class: true,
+          students: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                  avatar: true,
+                },
+              },
+            },
+            orderBy: { rollNumber: "asc" },
+          },
+          _count: {
+            select: { students: true },
+          },
         },
       },
-      distinct: ["id"],
-    }),
-  ]);
+    },
+  });
+
+  // Combine and deduplicate sections
+  const allSections = new Map<string, { section: typeof classTeacherSections[0]["section"]; isClassTeacher: boolean }>();
+
+  for (const ct of classTeacherSections) {
+    allSections.set(ct.sectionId, { section: ct.section, isClassTeacher: true });
+  }
+
+  for (const st of subjectTeacherSections) {
+    if (!allSections.has(st.sectionId)) {
+      allSections.set(st.sectionId, { section: st.section, isClassTeacher: false });
+    }
+  }
+
+  // Sort sections
+  const sectionsArray = Array.from(allSections.values())
+    .sort((a, b) => {
+      const orderDiff = a.section.class.displayOrder - b.section.class.displayOrder;
+      if (orderDiff !== 0) return orderDiff;
+      return a.section.name.localeCompare(b.section.name);
+    });
+
+  // Get subjects taught by this teacher
+  const subjects = await prisma.teacherSubject.findMany({
+    where: { teacherId },
+    include: {
+      subject: true,
+    },
+  });
 
   return {
-    sections: sectionTeachers.map((st) => ({
-      id: st.section.id,
-      name: st.section.name,
-      className: st.section.class.name,
-      classId: st.section.classId,
-      isClassTeacher: st.isClassTeacher,
-      capacity: st.section.capacity,
-      studentCount: st.section._count.students,
-      students: st.section.students.map((s) => ({
+    sections: sectionsArray.map((item) => ({
+      id: item.section.id,
+      name: item.section.name,
+      className: item.section.class.name,
+      classId: item.section.classId,
+      isClassTeacher: item.isClassTeacher,
+      capacity: item.section.capacity,
+      studentCount: item.section._count.students,
+      students: item.section.students.map((s) => ({
         id: s.id,
         rollNumber: s.rollNumber,
         userId: s.user.id,
@@ -305,11 +352,11 @@ async function fetchClassesDataInternal(teacherId: string): Promise<ClassesData>
         avatar: s.user.avatar,
       })),
     })),
-    subjects: subjects.map((s) => ({
-      id: s.id,
-      name: s.name,
-      code: s.code,
-      color: s.color,
+    subjects: subjects.map((ts) => ({
+      id: ts.subject.id,
+      name: ts.subject.name,
+      code: ts.subject.code,
+      color: ts.subject.color,
     })),
   };
 }
@@ -368,8 +415,8 @@ async function fetchAttendanceDataInternal(teacherId: string): Promise<Attendanc
   today.setHours(0, 0, 0, 0);
   const todayStr = today.toISOString().split("T")[0];
 
-  // Get sections with parallel query for initial section's attendance
-  const sections = await prisma.sectionTeacher.findMany({
+  // Get sections where teacher is class teacher
+  const classTeacherSections = await prisma.sectionTeacher.findMany({
     where: { teacherId },
     include: {
       section: {
@@ -385,18 +432,54 @@ async function fetchAttendanceDataInternal(teacherId: string): Promise<Attendanc
         },
       },
     },
-    orderBy: [
-      { section: { class: { displayOrder: "asc" } } },
-      { section: { name: "asc" } },
-    ],
   });
 
-  const formattedSections = sections.map((st) => ({
-    id: st.section.id,
-    name: `${st.section.class.name} - ${st.section.name}`,
-    studentCount: st.section._count.students,
-    isMarkedToday: st.section.attendances.length > 0,
-    isClassTeacher: st.isClassTeacher,
+  // Get sections where teacher teaches subjects
+  const subjectTeacherSections = await prisma.sectionSubjectTeacher.findMany({
+    where: { teacherId },
+    include: {
+      section: {
+        include: {
+          class: true,
+          _count: {
+            select: { students: true },
+          },
+          attendances: {
+            where: { date: today },
+            select: { id: true },
+          },
+        },
+      },
+    },
+  });
+
+  // Combine and deduplicate sections
+  const allSections = new Map<string, { section: typeof classTeacherSections[0]["section"]; isClassTeacher: boolean }>();
+
+  for (const ct of classTeacherSections) {
+    allSections.set(ct.sectionId, { section: ct.section, isClassTeacher: true });
+  }
+
+  for (const st of subjectTeacherSections) {
+    if (!allSections.has(st.sectionId)) {
+      allSections.set(st.sectionId, { section: st.section, isClassTeacher: false });
+    }
+  }
+
+  // Sort sections
+  const sectionsArray = Array.from(allSections.values())
+    .sort((a, b) => {
+      const orderDiff = a.section.class.displayOrder - b.section.class.displayOrder;
+      if (orderDiff !== 0) return orderDiff;
+      return a.section.name.localeCompare(b.section.name);
+    });
+
+  const formattedSections = sectionsArray.map((item) => ({
+    id: item.section.id,
+    name: `${item.section.class.name} - ${item.section.name}`,
+    studentCount: item.section._count.students,
+    isMarkedToday: item.section.attendances.length > 0,
+    isClassTeacher: item.isClassTeacher,
   }));
 
   // If we have sections, fetch initial records for the first section in parallel
@@ -544,47 +627,74 @@ export interface GradebookData {
 
 // Internal function to fetch gradebook data (cacheable)
 async function fetchGradebookDataInternal(teacherId: string): Promise<GradebookData> {
-  // Fetch sections and subjects in parallel
-  const [sectionTeachers, subjects] = await Promise.all([
-    prisma.sectionTeacher.findMany({
-      where: { teacherId },
-      include: {
-        section: {
-          include: {
-            class: true,
-          },
+  // Get sections where teacher is class teacher
+  const classTeacherSections = await prisma.sectionTeacher.findMany({
+    where: { teacherId },
+    include: {
+      section: {
+        include: {
+          class: true,
         },
       },
-      orderBy: [
-        { section: { class: { displayOrder: "asc" } } },
-        { section: { name: "asc" } },
-      ],
-    }),
-    prisma.subject.findMany({
-      where: {
-        teachers: {
-          some: { teacherId },
-        },
-      },
-      distinct: ["id"],
-    }),
-  ]);
+    },
+  });
 
-  const formattedSections = sectionTeachers.map((st) => ({
-    id: st.section.id,
-    name: st.section.name,
-    className: st.section.class.name,
+  // Get sections where teacher teaches subjects
+  const subjectTeacherSections = await prisma.sectionSubjectTeacher.findMany({
+    where: { teacherId },
+    include: {
+      section: {
+        include: {
+          class: true,
+        },
+      },
+    },
+  });
+
+  // Combine sections
+  const allSections = new Map<string, { section: typeof classTeacherSections[0]["section"] }>();
+
+  for (const ct of classTeacherSections) {
+    allSections.set(ct.sectionId, { section: ct.section });
+  }
+
+  for (const st of subjectTeacherSections) {
+    if (!allSections.has(st.sectionId)) {
+      allSections.set(st.sectionId, { section: st.section });
+    }
+  }
+
+  // Sort sections
+  const sectionsArray = Array.from(allSections.values())
+    .sort((a, b) => {
+      const orderDiff = a.section.class.displayOrder - b.section.class.displayOrder;
+      if (orderDiff !== 0) return orderDiff;
+      return a.section.name.localeCompare(b.section.name);
+    });
+
+  // Get subjects taught by this teacher
+  const subjects = await prisma.teacherSubject.findMany({
+    where: { teacherId },
+    include: {
+      subject: true,
+    },
+  });
+
+  const formattedSections = sectionsArray.map((item) => ({
+    id: item.section.id,
+    name: item.section.name,
+    className: item.section.class.name,
   }));
 
-  const formattedSubjects = subjects.map((s) => ({
-    id: s.id,
-    name: s.name,
-    color: s.color,
+  const formattedSubjects = subjects.map((ts) => ({
+    id: ts.subject.id,
+    name: ts.subject.name,
+    color: ts.subject.color,
   }));
 
   // Fetch initial gradebook for first section in parallel
   let initialGradebook = null;
-  const firstSection = sectionTeachers[0]?.section;
+  const firstSection = sectionsArray[0]?.section;
 
   if (firstSection) {
     const [section, assessments] = await Promise.all([
@@ -759,8 +869,49 @@ export interface AssessmentsData {
 
 // Internal function to fetch assessments data (cacheable)
 async function fetchAssessmentsDataInternal(teacherId: string): Promise<AssessmentsData> {
+  // Get sections where teacher is class teacher
+  const classTeacherSections = await prisma.sectionTeacher.findMany({
+    where: { teacherId },
+    include: {
+      section: {
+        include: { class: true },
+      },
+    },
+  });
+
+  // Get sections where teacher teaches subjects
+  const subjectTeacherSections = await prisma.sectionSubjectTeacher.findMany({
+    where: { teacherId },
+    include: {
+      section: {
+        include: { class: true },
+      },
+    },
+  });
+
+  // Combine sections
+  const allSections = new Map<string, typeof classTeacherSections[0]["section"]>();
+
+  for (const ct of classTeacherSections) {
+    allSections.set(ct.sectionId, ct.section);
+  }
+
+  for (const st of subjectTeacherSections) {
+    if (!allSections.has(st.sectionId)) {
+      allSections.set(st.sectionId, st.section);
+    }
+  }
+
+  // Sort sections
+  const sectionsArray = Array.from(allSections.values())
+    .sort((a, b) => {
+      const orderDiff = a.class.displayOrder - b.class.displayOrder;
+      if (orderDiff !== 0) return orderDiff;
+      return a.name.localeCompare(b.name);
+    });
+
   // Fetch all data in parallel
-  const [assessments, sectionTeachers, subjects, studentCounts] = await Promise.all([
+  const [assessments, subjects, studentCounts] = await Promise.all([
     // Get assessments
     prisma.assessment.findMany({
       where: { createdById: teacherId },
@@ -775,27 +926,12 @@ async function fetchAssessmentsDataInternal(teacherId: string): Promise<Assessme
       },
       orderBy: { date: "desc" },
     }),
-    // Get sections
-    prisma.sectionTeacher.findMany({
+    // Get subjects
+    prisma.teacherSubject.findMany({
       where: { teacherId },
       include: {
-        section: {
-          include: { class: true },
-        },
+        subject: true,
       },
-      orderBy: [
-        { section: { class: { displayOrder: "asc" } } },
-        { section: { name: "asc" } },
-      ],
-    }),
-    // Get subjects
-    prisma.subject.findMany({
-      where: {
-        teachers: {
-          some: { teacherId },
-        },
-      },
-      distinct: ["id"],
     }),
     // Get student counts per section
     prisma.studentProfile.groupBy({
@@ -828,15 +964,15 @@ async function fetchAssessmentsDataInternal(teacherId: string): Promise<Assessme
       totalStudents: countMap.get(a.sectionId) || 0,
       createdAt: a.createdAt,
     })),
-    sections: sectionTeachers.map((st) => ({
-      id: st.section.id,
-      name: st.section.name,
-      className: st.section.class.name,
+    sections: sectionsArray.map((section) => ({
+      id: section.id,
+      name: section.name,
+      className: section.class.name,
     })),
-    subjects: subjects.map((s) => ({
-      id: s.id,
-      name: s.name,
-      color: s.color,
+    subjects: subjects.map((ts) => ({
+      id: ts.subject.id,
+      name: ts.subject.name,
+      color: ts.subject.color,
     })),
   };
 }

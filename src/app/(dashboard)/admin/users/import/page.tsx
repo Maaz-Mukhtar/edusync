@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Upload,
   Download,
@@ -70,7 +71,17 @@ interface ParsedUser {
   relationship?: string;
 }
 
+const roleLabels: Record<string, string> = {
+  STUDENT: "Students",
+  TEACHER: "Teachers",
+  PARENT: "Parents",
+  ADMIN: "Administrators",
+};
+
 export default function ImportUsersPage() {
+  const searchParams = useSearchParams();
+  const preselectedType = searchParams.get("type") as string | null;
+
   const [sections, setSections] = useState<Section[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [parsedUsers, setParsedUsers] = useState<ParsedUser[]>([]);
@@ -78,6 +89,20 @@ export default function ImportUsersPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Get return link based on preselected type
+  const getReturnLink = () => {
+    switch (preselectedType) {
+      case "STUDENT":
+        return "/admin/students";
+      case "TEACHER":
+        return "/admin/teachers";
+      case "PARENT":
+        return "/admin/parents";
+      default:
+        return "/admin/users";
+    }
+  };
 
   const fetchTemplateInfo = useCallback(async () => {
     setIsLoading(true);
@@ -290,14 +315,16 @@ export default function ImportUsersPage() {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/admin/users">
+          <Link href={getReturnLink()}>
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Import Users</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Import {preselectedType ? roleLabels[preselectedType] || "Users" : "Users"}
+          </h1>
           <p className="text-muted-foreground">
-            Bulk import users from a CSV file
+            Bulk import {preselectedType ? roleLabels[preselectedType]?.toLowerCase() || "users" : "users"} from a CSV file
           </p>
         </div>
       </div>
@@ -521,9 +548,9 @@ export default function ImportUsersPage() {
             )}
 
             <Button asChild>
-              <Link href="/admin/users">
+              <Link href={getReturnLink()}>
                 <FileSpreadsheet className="mr-2 h-4 w-4" />
-                View All Users
+                View All {preselectedType ? roleLabels[preselectedType] || "Users" : "Users"}
               </Link>
             </Button>
           </CardContent>

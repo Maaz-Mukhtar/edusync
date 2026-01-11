@@ -5,13 +5,12 @@ import { z } from "zod";
 
 const assignTeacherSchema = z.object({
   teacherId: z.string().min(1),
-  isClassTeacher: z.boolean().optional().default(false),
 });
 
-// GET /api/sections/[id]/teachers - Get teachers assigned to a section
+// GET /api/classes/[id]/subjects/[subjectId]/teachers - Get teachers assigned to a subject
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string; subjectId: string }> }
 ) {
   try {
     const session = await auth();
@@ -19,12 +18,13 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = await params;
+    const { id: classId, subjectId } = await params;
 
-    // Check if section exists and belongs to same school
-    const section = await prisma.section.findFirst({
+    // Verify subject exists and belongs to same school
+    const subject = await prisma.subject.findFirst({
       where: {
-        id,
+        id: subjectId,
+        classId,
         class: {
           schoolId: session.user.schoolId,
         },
@@ -49,26 +49,25 @@ export async function GET(
       },
     });
 
-    if (!section) {
-      return NextResponse.json({ error: "Section not found" }, { status: 404 });
+    if (!subject) {
+      return NextResponse.json({ error: "Subject not found" }, { status: 404 });
     }
 
-    const teachers = section.teachers.map((st) => ({
-      id: st.id,
-      teacherId: st.teacherId,
-      isClassTeacher: st.isClassTeacher,
+    const teachers = subject.teachers.map((ts) => ({
+      id: ts.id,
+      teacherId: ts.teacherId,
       teacher: {
-        id: st.teacher.id,
-        userId: st.teacher.userId,
-        firstName: st.teacher.user.firstName,
-        lastName: st.teacher.user.lastName,
-        email: st.teacher.user.email,
+        id: ts.teacher.id,
+        userId: ts.teacher.userId,
+        firstName: ts.teacher.user.firstName,
+        lastName: ts.teacher.user.lastName,
+        email: ts.teacher.user.email,
       },
     }));
 
     return NextResponse.json({ teachers });
   } catch (error) {
-    console.error("Error fetching section teachers:", error);
+    console.error("Error fetching subject teachers:", error);
     return NextResponse.json(
       { error: "Failed to fetch teachers" },
       { status: 500 }
@@ -76,10 +75,10 @@ export async function GET(
   }
 }
 
-// POST /api/sections/[id]/teachers - Assign a teacher to a section
+// POST /api/classes/[id]/subjects/[subjectId]/teachers - Assign a teacher to a subject
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string; subjectId: string }> }
 ) {
   try {
     const session = await auth();
@@ -91,25 +90,26 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { id } = await params;
+    const { id: classId, subjectId } = await params;
     const body = await request.json();
-    const { teacherId, isClassTeacher } = assignTeacherSchema.parse(body);
+    const { teacherId } = assignTeacherSchema.parse(body);
 
-    // Check if section exists and belongs to same school
-    const section = await prisma.section.findFirst({
+    // Verify subject exists and belongs to same school
+    const subject = await prisma.subject.findFirst({
       where: {
-        id,
+        id: subjectId,
+        classId,
         class: {
           schoolId: session.user.schoolId,
         },
       },
     });
 
-    if (!section) {
-      return NextResponse.json({ error: "Section not found" }, { status: 404 });
+    if (!subject) {
+      return NextResponse.json({ error: "Subject not found" }, { status: 404 });
     }
 
-    // Check if teacher exists and belongs to same school
+    // Verify teacher exists and belongs to same school
     const teacher = await prisma.teacherProfile.findFirst({
       where: {
         id: teacherId,
@@ -124,40 +124,26 @@ export async function POST(
     }
 
     // Check if assignment already exists
-    const existingAssignment = await prisma.sectionTeacher.findUnique({
+    const existingAssignment = await prisma.teacherSubject.findUnique({
       where: {
-        sectionId_teacherId: {
-          sectionId: id,
+        teacherId_subjectId: {
           teacherId,
+          subjectId,
         },
       },
     });
 
     if (existingAssignment) {
       return NextResponse.json(
-        { error: "Teacher is already assigned to this section" },
+        { error: "Teacher is already assigned to this subject" },
         { status: 400 }
       );
     }
 
-    // If setting as class teacher, remove existing class teacher first
-    if (isClassTeacher) {
-      await prisma.sectionTeacher.updateMany({
-        where: {
-          sectionId: id,
-          isClassTeacher: true,
-        },
-        data: {
-          isClassTeacher: false,
-        },
-      });
-    }
-
-    const assignment = await prisma.sectionTeacher.create({
+    const assignment = await prisma.teacherSubject.create({
       data: {
-        sectionId: id,
         teacherId,
-        isClassTeacher,
+        subjectId,
       },
       include: {
         teacher: {
@@ -189,10 +175,10 @@ export async function POST(
   }
 }
 
-// DELETE /api/sections/[id]/teachers - Remove a teacher from a section
+// DELETE /api/classes/[id]/subjects/[subjectId]/teachers - Remove a teacher from a subject
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string; subjectId: string }> }
 ) {
   try {
     const session = await auth();
@@ -204,7 +190,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { id } = await params;
+    const { id: classId, subjectId } = await params;
     const { searchParams } = new URL(request.url);
     const teacherId = searchParams.get("teacherId");
 
@@ -215,27 +201,36 @@ export async function DELETE(
       );
     }
 
-    // Check if section exists and belongs to same school
-    const section = await prisma.section.findFirst({
+    // Verify subject exists and belongs to same school
+    const subject = await prisma.subject.findFirst({
       where: {
-        id,
+        id: subjectId,
+        classId,
         class: {
           schoolId: session.user.schoolId,
         },
       },
     });
 
-    if (!section) {
-      return NextResponse.json({ error: "Section not found" }, { status: 404 });
+    if (!subject) {
+      return NextResponse.json({ error: "Subject not found" }, { status: 404 });
     }
 
     // Delete the assignment
-    await prisma.sectionTeacher.delete({
+    await prisma.teacherSubject.delete({
       where: {
-        sectionId_teacherId: {
-          sectionId: id,
+        teacherId_subjectId: {
           teacherId,
+          subjectId,
         },
+      },
+    });
+
+    // Also remove any section-level assignments for this teacher-subject combination
+    await prisma.sectionSubjectTeacher.deleteMany({
+      where: {
+        teacherId,
+        subjectId,
       },
     });
 

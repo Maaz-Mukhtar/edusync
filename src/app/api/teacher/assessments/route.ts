@@ -135,13 +135,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Access denied to this section" }, { status: 403 });
     }
 
-    // Verify subject exists
+    // Verify subject exists and belongs to teacher's school
     const subject = await prisma.subject.findFirst({
       where: {
         id: validatedData.subjectId,
-        school: {
-          users: {
-            some: { id: session.user.id },
+        class: {
+          school: {
+            users: {
+              some: { id: session.user.id },
+            },
           },
         },
       },

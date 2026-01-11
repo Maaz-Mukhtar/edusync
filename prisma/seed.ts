@@ -26,6 +26,7 @@ async function main() {
   await prisma.assessment.deleteMany();
   await prisma.attendance.deleteMany();
   await prisma.timetableSlot.deleteMany();
+  await prisma.sectionSubjectTeacher.deleteMany();
   await prisma.teacherSubject.deleteMany();
   await prisma.sectionTeacher.deleteMany();
   await prisma.parentStudent.deleteMany();
@@ -109,30 +110,16 @@ async function main() {
     },
   });
 
-  // Create Subjects
-  const subjects = await Promise.all([
-    prisma.subject.create({
-      data: { schoolId: school.id, name: "Mathematics", code: "MATH", color: "#3B82F6" },
-    }),
-    prisma.subject.create({
-      data: { schoolId: school.id, name: "English", code: "ENG", color: "#10B981" },
-    }),
-    prisma.subject.create({
-      data: { schoolId: school.id, name: "Science", code: "SCI", color: "#8B5CF6" },
-    }),
-    prisma.subject.create({
-      data: { schoolId: school.id, name: "Urdu", code: "URD", color: "#F59E0B" },
-    }),
-    prisma.subject.create({
-      data: { schoolId: school.id, name: "Islamiat", code: "ISL", color: "#EF4444" },
-    }),
-    prisma.subject.create({
-      data: { schoolId: school.id, name: "Computer Science", code: "CS", color: "#06B6D4" },
-    }),
-  ]);
-  console.log(`Created ${subjects.length} subjects`);
+  // Create Classes with Sections and Subjects
+  const subjectData = [
+    { name: "Mathematics", code: "MATH", color: "#3B82F6" },
+    { name: "English", code: "ENG", color: "#10B981" },
+    { name: "Science", code: "SCI", color: "#8B5CF6" },
+    { name: "Urdu", code: "URD", color: "#F59E0B" },
+    { name: "Islamiat", code: "ISL", color: "#EF4444" },
+    { name: "Computer Science", code: "CS", color: "#06B6D4" },
+  ];
 
-  // Create Classes and Sections
   const classes = await Promise.all([
     prisma.class.create({
       data: {
@@ -145,8 +132,11 @@ async function main() {
             { name: "B", capacity: 30 },
           ],
         },
+        subjects: {
+          create: subjectData,
+        },
       },
-      include: { sections: true },
+      include: { sections: true, subjects: true },
     }),
     prisma.class.create({
       data: {
@@ -159,8 +149,11 @@ async function main() {
             { name: "B", capacity: 30 },
           ],
         },
+        subjects: {
+          create: subjectData,
+        },
       },
-      include: { sections: true },
+      include: { sections: true, subjects: true },
     }),
     prisma.class.create({
       data: {
@@ -173,11 +166,14 @@ async function main() {
             { name: "B", capacity: 30 },
           ],
         },
+        subjects: {
+          create: subjectData,
+        },
       },
-      include: { sections: true },
+      include: { sections: true, subjects: true },
     }),
   ]);
-  console.log(`Created ${classes.length} classes with sections`);
+  console.log(`Created ${classes.length} classes with sections and subjects`);
 
   // Create Teachers
   const teacherData = [
@@ -211,44 +207,37 @@ async function main() {
   );
   console.log(`Created ${teachers.length} teachers`);
 
-  // Assign teachers to sections and subjects
+  // Assign class teachers to sections
   for (const cls of classes) {
-    for (const section of cls.sections) {
-      // Assign first teacher as class teacher
+    for (let i = 0; i < cls.sections.length; i++) {
+      const section = cls.sections[i];
+      // Assign a teacher as class teacher (rotate between teachers)
       await prisma.sectionTeacher.create({
         data: {
           sectionId: section.id,
-          teacherId: teachers[0].profile.id,
-          isClassTeacher: true,
+          teacherId: teachers[i % teachers.length].profile.id,
         },
       });
-
-      // Assign other teachers
-      for (let i = 1; i < teachers.length; i++) {
-        await prisma.sectionTeacher.create({
-          data: {
-            sectionId: section.id,
-            teacherId: teachers[i].profile.id,
-          },
-        });
-      }
     }
   }
 
-  // Assign subjects to teachers
-  for (let i = 0; i < teachers.length; i++) {
-    await prisma.teacherSubject.create({
-      data: {
-        teacherId: teachers[i].profile.id,
-        subjectId: subjects[i * 2].id,
-      },
-    });
-    await prisma.teacherSubject.create({
-      data: {
-        teacherId: teachers[i].profile.id,
-        subjectId: subjects[i * 2 + 1].id,
-      },
-    });
+  // Assign subjects to teachers (per class)
+  for (const cls of classes) {
+    for (let i = 0; i < teachers.length; i++) {
+      // Each teacher teaches 2 subjects
+      await prisma.teacherSubject.create({
+        data: {
+          teacherId: teachers[i].profile.id,
+          subjectId: cls.subjects[i * 2].id,
+        },
+      });
+      await prisma.teacherSubject.create({
+        data: {
+          teacherId: teachers[i].profile.id,
+          subjectId: cls.subjects[i * 2 + 1].id,
+        },
+      });
+    }
   }
 
   // Create Students and Parents
@@ -379,7 +368,7 @@ async function main() {
   const assessment = await prisma.assessment.create({
     data: {
       sectionId: classes[0].sections[0].id,
-      subjectId: subjects[0].id,
+      subjectId: classes[0].subjects[0].id, // Use the first class's first subject (Mathematics)
       termId: term1.id,
       createdById: teachers[0].profile.id,
       title: "Mid-Term Mathematics Test",

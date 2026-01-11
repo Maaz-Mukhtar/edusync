@@ -21,6 +21,9 @@ import {
   Brain,
   School,
   Link2,
+  UserCog,
+  Users2,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@prisma/client";
@@ -33,7 +36,10 @@ interface NavItem {
 
 const adminNavItems: NavItem[] = [
   { title: "Dashboard", href: "/admin", icon: LayoutDashboard },
-  { title: "Users", href: "/admin/users", icon: Users },
+  { title: "Students", href: "/admin/students", icon: GraduationCap },
+  { title: "Teachers", href: "/admin/teachers", icon: UserCog },
+  { title: "Parents", href: "/admin/parents", icon: Users2 },
+  { title: "Administrators", href: "/admin/users", icon: Shield },
   { title: "Classes", href: "/admin/classes", icon: School },
   { title: "Subjects", href: "/admin/subjects", icon: BookOpen },
   { title: "Parent Links", href: "/admin/parent-links", icon: Link2 },

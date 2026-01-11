@@ -8,9 +8,11 @@ import {
   BookOpen,
   MoreHorizontal,
   Users,
-  FileText,
+  ChevronRight,
+  ArrowLeft,
   UserPlus,
   X,
+  GraduationCap,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -56,19 +58,29 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 
-interface Teacher {
+interface Class {
   id: string;
-  userId: string;
+  name: string;
+  displayOrder: number;
+  _count: {
+    sections: number;
+  };
+}
+
+interface Teacher {
+  id: string; // User ID
+  teacherProfileId: string; // TeacherProfile ID
   firstName: string;
   lastName: string;
   email: string | null;
-  employeeId: string | null;
 }
 
 interface SubjectTeacher {
   id: string;
   teacherId: string;
-  teacher: Teacher;
+  firstName: string;
+  lastName: string;
+  email: string | null;
 }
 
 interface Subject {
@@ -76,10 +88,8 @@ interface Subject {
   name: string;
   code: string | null;
   color: string | null;
-  _count: {
-    teachers: number;
-    assessments: number;
-  };
+  classId: string;
+  teachers: SubjectTeacher[];
 }
 
 const subjectColors = [
@@ -94,8 +104,11 @@ const subjectColors = [
 ];
 
 export default function SubjectsPage() {
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [selectedClass, setSelectedClass] = useState<Class | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
 
   // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -117,15 +130,31 @@ export default function SubjectsPage() {
   const [teacherDialogOpen, setTeacherDialogOpen] = useState(false);
   const [allTeachers, setAllTeachers] = useState<Teacher[]>([]);
   const [selectedSubjectForTeachers, setSelectedSubjectForTeachers] = useState<Subject | null>(null);
-  const [subjectTeachers, setSubjectTeachers] = useState<SubjectTeacher[]>([]);
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>("");
-  const [loadingTeachers, setLoadingTeachers] = useState(false);
   const [addingTeacher, setAddingTeacher] = useState(false);
 
-  const fetchSubjects = useCallback(async () => {
+  const fetchClasses = useCallback(async () => {
     setIsLoading(true);
     try {
-      const response = await fetch("/api/subjects");
+      const response = await fetch("/api/classes");
+      const data = await response.json();
+
+      if (response.ok) {
+        setClasses(data.classes);
+      } else {
+        toast.error(data.error || "Failed to fetch classes");
+      }
+    } catch {
+      toast.error("Failed to fetch classes");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const fetchSubjects = useCallback(async (classId: string) => {
+    setIsLoadingSubjects(true);
+    try {
+      const response = await fetch(`/api/classes/${classId}/subjects`);
       const data = await response.json();
 
       if (response.ok) {
@@ -136,65 +165,83 @@ export default function SubjectsPage() {
     } catch {
       toast.error("Failed to fetch subjects");
     } finally {
-      setIsLoading(false);
+      setIsLoadingSubjects(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchSubjects();
-  }, [fetchSubjects]);
-
   const fetchAllTeachers = async () => {
     try {
-      const response = await fetch("/api/teachers");
+      const response = await fetch("/api/teachers?limit=1000");
       const data = await response.json();
       if (response.ok) {
-        setAllTeachers(data.teachers);
+        // Map the API response to match our Teacher interface
+        const mappedTeachers = data.teachers.map((t: {
+          id: string;
+          firstName: string;
+          lastName: string;
+          email: string | null;
+          teacherProfile: { id: string } | null;
+        }) => ({
+          id: t.id,
+          teacherProfileId: t.teacherProfile?.id || "",
+          firstName: t.firstName,
+          lastName: t.lastName,
+          email: t.email,
+        })).filter((t: Teacher) => t.teacherProfileId); // Only include teachers with profiles
+        setAllTeachers(mappedTeachers);
       }
     } catch {
       toast.error("Failed to fetch teachers");
     }
   };
 
-  const fetchSubjectTeachers = async (subjectId: string) => {
-    setLoadingTeachers(true);
-    try {
-      const response = await fetch(`/api/subjects/${subjectId}/teachers`);
-      const data = await response.json();
-      if (response.ok) {
-        setSubjectTeachers(data.teachers);
-      } else {
-        toast.error("Failed to fetch subject teachers");
-      }
-    } catch {
-      toast.error("Failed to fetch subject teachers");
-    } finally {
-      setLoadingTeachers(false);
+  useEffect(() => {
+    fetchClasses();
+  }, [fetchClasses]);
+
+  useEffect(() => {
+    if (selectedClass) {
+      fetchSubjects(selectedClass.id);
     }
-  };
+  }, [selectedClass, fetchSubjects]);
 
   const openTeacherDialog = async (subject: Subject) => {
     setSelectedSubjectForTeachers(subject);
     setTeacherDialogOpen(true);
-    await Promise.all([fetchAllTeachers(), fetchSubjectTeachers(subject.id)]);
+    await fetchAllTeachers();
   };
 
   const handleAddTeacher = async () => {
-    if (!selectedSubjectForTeachers || !selectedTeacherId) return;
+    if (!selectedSubjectForTeachers || !selectedTeacherId || !selectedClass) return;
+
+    // Find the teacher to get their teacherProfileId
+    const teacher = allTeachers.find(t => t.teacherProfileId === selectedTeacherId);
+    if (!teacher) {
+      toast.error("Teacher not found");
+      return;
+    }
 
     setAddingTeacher(true);
     try {
-      const response = await fetch(`/api/subjects/${selectedSubjectForTeachers.id}/teachers`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teacherId: selectedTeacherId }),
-      });
+      const response = await fetch(
+        `/api/classes/${selectedClass.id}/subjects/${selectedSubjectForTeachers.id}/teachers`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ teacherId: teacher.teacherProfileId }),
+        }
+      );
 
       if (response.ok) {
         toast.success("Teacher assigned successfully");
         setSelectedTeacherId("");
-        await fetchSubjectTeachers(selectedSubjectForTeachers.id);
-        fetchSubjects();
+        await fetchSubjects(selectedClass.id);
+        // Update the selected subject
+        const updatedSubjects = await fetch(`/api/classes/${selectedClass.id}/subjects`).then(r => r.json());
+        const updatedSubject = updatedSubjects.subjects.find((s: Subject) => s.id === selectedSubjectForTeachers.id);
+        if (updatedSubject) {
+          setSelectedSubjectForTeachers(updatedSubject);
+        }
       } else {
         const data = await response.json();
         toast.error(data.error || "Failed to assign teacher");
@@ -207,18 +254,23 @@ export default function SubjectsPage() {
   };
 
   const handleRemoveTeacher = async (teacherId: string) => {
-    if (!selectedSubjectForTeachers) return;
+    if (!selectedSubjectForTeachers || !selectedClass) return;
 
     try {
       const response = await fetch(
-        `/api/subjects/${selectedSubjectForTeachers.id}/teachers?teacherId=${teacherId}`,
+        `/api/classes/${selectedClass.id}/subjects/${selectedSubjectForTeachers.id}/teachers?teacherId=${teacherId}`,
         { method: "DELETE" }
       );
 
       if (response.ok) {
         toast.success("Teacher removed successfully");
-        await fetchSubjectTeachers(selectedSubjectForTeachers.id);
-        fetchSubjects();
+        await fetchSubjects(selectedClass.id);
+        // Update the selected subject
+        const updatedSubjects = await fetch(`/api/classes/${selectedClass.id}/subjects`).then(r => r.json());
+        const updatedSubject = updatedSubjects.subjects.find((s: Subject) => s.id === selectedSubjectForTeachers.id);
+        if (updatedSubject) {
+          setSelectedSubjectForTeachers(updatedSubject);
+        }
       } else {
         const data = await response.json();
         toast.error(data.error || "Failed to remove teacher");
@@ -249,14 +301,16 @@ export default function SubjectsPage() {
   };
 
   const handleSave = async () => {
-    if (!subjectName.trim()) {
+    if (!subjectName.trim() || !selectedClass) {
       toast.error("Subject name is required");
       return;
     }
 
     setIsSaving(true);
     try {
-      const url = editingSubject ? `/api/subjects/${editingSubject.id}` : "/api/subjects";
+      const url = editingSubject
+        ? `/api/classes/${selectedClass.id}/subjects/${editingSubject.id}`
+        : `/api/classes/${selectedClass.id}/subjects`;
       const method = editingSubject ? "PUT" : "POST";
 
       const response = await fetch(url, {
@@ -274,7 +328,7 @@ export default function SubjectsPage() {
       if (response.ok) {
         toast.success(editingSubject ? "Subject updated successfully" : "Subject created successfully");
         setDialogOpen(false);
-        fetchSubjects();
+        fetchSubjects(selectedClass.id);
       } else {
         toast.error(data.error || "Failed to save subject");
       }
@@ -286,19 +340,20 @@ export default function SubjectsPage() {
   };
 
   const handleDelete = async () => {
-    if (!deletingSubject) return;
+    if (!deletingSubject || !selectedClass) return;
 
     setIsDeleting(true);
     try {
-      const response = await fetch(`/api/subjects/${deletingSubject.id}`, {
-        method: "DELETE",
-      });
+      const response = await fetch(
+        `/api/classes/${selectedClass.id}/subjects/${deletingSubject.id}`,
+        { method: "DELETE" }
+      );
 
       if (response.ok) {
         toast.success("Subject deleted successfully");
         setDeleteDialogOpen(false);
         setDeletingSubject(null);
-        fetchSubjects();
+        fetchSubjects(selectedClass.id);
       } else {
         const data = await response.json();
         toast.error(data.error || "Failed to delete subject");
@@ -313,19 +368,111 @@ export default function SubjectsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-muted-foreground">Loading subjects...</div>
+        <div className="text-muted-foreground">Loading classes...</div>
       </div>
     );
   }
 
+  // Show classes list
+  if (!selectedClass) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Subjects</h1>
+            <p className="text-muted-foreground">
+              Select a class to manage its subjects
+            </p>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Classes</CardTitle>
+              <GraduationCap className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{classes.length}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Sections</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {classes.reduce((acc, c) => acc + c._count.sections, 0)}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Classes Grid */}
+        {classes.length === 0 ? (
+          <Card>
+            <CardContent className="py-8 text-center">
+              <GraduationCap className="mx-auto h-12 w-12 text-muted-foreground" />
+              <h3 className="mt-4 text-lg font-semibold">No classes yet</h3>
+              <p className="text-muted-foreground">
+                Create classes first before adding subjects
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {classes.map((classItem) => (
+              <Card
+                key={classItem.id}
+                className="cursor-pointer hover:border-primary transition-colors"
+                onClick={() => setSelectedClass(classItem)}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <GraduationCap className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">{classItem.name}</CardTitle>
+                        <CardDescription>
+                          {classItem._count.sections} section{classItem._count.sections !== 1 ? "s" : ""}
+                        </CardDescription>
+                      </div>
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Show subjects for selected class
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Subjects</h1>
-          <p className="text-muted-foreground">
-            Manage your school&apos;s academic subjects
-          </p>
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSelectedClass(null)}
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {selectedClass.name} - Subjects
+            </h1>
+            <p className="text-muted-foreground">
+              Manage subjects for {selectedClass.name}
+            </p>
+          </div>
         </div>
         <Button onClick={() => openDialog()}>
           <Plus className="mr-2 h-4 w-4" />
@@ -333,38 +480,18 @@ export default function SubjectsPage() {
         </Button>
       </div>
 
-      {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Subjects</CardTitle>
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{subjects.length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Assessments</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {subjects.reduce((acc, s) => acc + s._count.assessments, 0)}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Subjects Grid */}
-      {subjects.length === 0 ? (
+      {isLoadingSubjects ? (
+        <div className="flex items-center justify-center h-32">
+          <div className="text-muted-foreground">Loading subjects...</div>
+        </div>
+      ) : subjects.length === 0 ? (
         <Card>
           <CardContent className="py-8 text-center">
             <BookOpen className="mx-auto h-12 w-12 text-muted-foreground" />
             <h3 className="mt-4 text-lg font-semibold">No subjects yet</h3>
             <p className="text-muted-foreground">
-              Get started by creating your first subject
+              Get started by creating a subject for {selectedClass.name}
             </p>
             <Button className="mt-4" onClick={() => openDialog()}>
               <Plus className="mr-2 h-4 w-4" />
@@ -421,15 +548,14 @@ export default function SubjectsPage() {
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-1">
-                    <Users className="h-4 w-4" />
-                    {subject._count.teachers} teacher{subject._count.teachers !== 1 ? "s" : ""}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <FileText className="h-4 w-4" />
-                    {subject._count.assessments} assessment{subject._count.assessments !== 1 ? "s" : ""}
-                  </div>
+                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                  <Users className="h-4 w-4" />
+                  {subject.teachers.length} teacher{subject.teachers.length !== 1 ? "s" : ""}
+                  {subject.teachers.length > 0 && (
+                    <span className="ml-1">
+                      ({subject.teachers.map(t => `${t.firstName} ${t.lastName}`).join(", ")})
+                    </span>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -443,7 +569,9 @@ export default function SubjectsPage() {
           <DialogHeader>
             <DialogTitle>{editingSubject ? "Edit Subject" : "Add New Subject"}</DialogTitle>
             <DialogDescription>
-              {editingSubject ? "Update the subject details" : "Create a new subject for your school"}
+              {editingSubject
+                ? "Update the subject details"
+                : `Create a new subject for ${selectedClass.name}`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -549,10 +677,10 @@ export default function SubjectsPage() {
                   <SelectContent>
                     {allTeachers
                       .filter(
-                        (t) => !subjectTeachers.some((st) => st.teacherId === t.id)
+                        (t) => !selectedSubjectForTeachers?.teachers.some((st) => st.teacherId === t.teacherProfileId)
                       )
                       .map((teacher) => (
-                        <SelectItem key={teacher.id} value={teacher.id}>
+                        <SelectItem key={teacher.teacherProfileId} value={teacher.teacherProfileId}>
                           {teacher.firstName} {teacher.lastName}
                         </SelectItem>
                       ))}
@@ -570,28 +698,26 @@ export default function SubjectsPage() {
             {/* Assigned Teachers List */}
             <div className="space-y-2">
               <Label>Assigned Teachers</Label>
-              {loadingTeachers ? (
-                <p className="text-sm text-muted-foreground">Loading...</p>
-              ) : subjectTeachers.length === 0 ? (
+              {selectedSubjectForTeachers?.teachers.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No teachers assigned</p>
               ) : (
                 <div className="space-y-2">
-                  {subjectTeachers.map((st) => (
+                  {selectedSubjectForTeachers?.teachers.map((teacher) => (
                     <div
-                      key={st.id}
+                      key={teacher.id}
                       className="flex items-center justify-between p-2 border rounded-md"
                     >
                       <div className="flex items-center gap-2">
                         <Users className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm">
-                          {st.teacher.firstName} {st.teacher.lastName}
+                          {teacher.firstName} {teacher.lastName}
                         </span>
                       </div>
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => handleRemoveTeacher(st.teacherId)}
+                        onClick={() => handleRemoveTeacher(teacher.teacherId)}
                       >
                         <X className="h-4 w-4" />
                       </Button>

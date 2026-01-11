@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
 import {
   MoreHorizontal,
-  Plus,
   UserPlus,
   Pencil,
   Trash2,
@@ -26,13 +25,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
@@ -107,7 +99,6 @@ export default function UsersPage() {
     total: 0,
     totalPages: 0,
   });
-  const [roleFilter, setRoleFilter] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -118,10 +109,8 @@ export default function UsersPage() {
       const params = new URLSearchParams({
         page: pagination.page.toString(),
         limit: pagination.limit.toString(),
+        role: "ADMIN", // Only show admins
       });
-      if (roleFilter !== "all") {
-        params.set("role", roleFilter);
-      }
 
       const response = await fetch(`/api/users?${params}`);
       const data = await response.json();
@@ -137,7 +126,7 @@ export default function UsersPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [pagination.page, pagination.limit, roleFilter]);
+  }, [pagination.page, pagination.limit]);
 
   useEffect(() => {
     fetchUsers();
@@ -334,9 +323,9 @@ export default function UsersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Users</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Administrators</h1>
           <p className="text-muted-foreground">
-            Manage all users in your school
+            Manage admin accounts for your school
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -349,28 +338,10 @@ export default function UsersPage() {
           <Link href="/admin/users/new">
             <Button>
               <UserPlus className="mr-2 h-4 w-4" />
-              Add User
+              Add Admin
             </Button>
           </Link>
         </div>
-      </div>
-
-      <div className="flex items-center gap-4">
-        <Select value={roleFilter} onValueChange={(value) => {
-          setRoleFilter(value);
-          setPagination((prev) => ({ ...prev, page: 1 }));
-        }}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter by role" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Roles</SelectItem>
-            <SelectItem value="ADMIN">Admins</SelectItem>
-            <SelectItem value="TEACHER">Teachers</SelectItem>
-            <SelectItem value="STUDENT">Students</SelectItem>
-            <SelectItem value="PARENT">Parents</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       <DataTable

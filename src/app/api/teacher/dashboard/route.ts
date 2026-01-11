@@ -27,27 +27,35 @@ export async function GET() {
     today.setHours(0, 0, 0, 0);
     const dayOfWeek = today.getDay();
 
+    // Get sections where teacher is class teacher
+    const classTeacherSections = await prisma.sectionTeacher.findMany({
+      where: { teacherId: teacherProfile.id },
+      select: { sectionId: true },
+    });
+
+    // Get sections where teacher teaches subjects
+    const subjectTeacherSections = await prisma.sectionSubjectTeacher.findMany({
+      where: { teacherId: teacherProfile.id },
+      select: { sectionId: true },
+    });
+
+    // Combine section IDs
+    const allSectionIds = [...new Set([
+      ...classTeacherSections.map(s => s.sectionId),
+      ...subjectTeacherSections.map(s => s.sectionId),
+    ])];
+
     // Run queries in parallel
     const [
-      assignedSections,
       todaySchedule,
-      pendingAttendance,
+      pendingAttendanceSections,
       recentAssessments,
       totalStudents,
     ] = await Promise.all([
-      // Get assigned sections count
-      prisma.sectionTeacher.count({
-        where: { teacherId: teacherProfile.id },
-      }),
-
-      // Get today's schedule
+      // Get today's schedule for teacher's sections
       prisma.timetableSlot.findMany({
         where: {
-          section: {
-            teachers: {
-              some: { teacherId: teacherProfile.id },
-            },
-          },
+          sectionId: { in: allSectionIds },
           dayOfWeek,
         },
         include: {
@@ -62,25 +70,19 @@ export async function GET() {
       }),
 
       // Get sections without attendance today
-      prisma.sectionTeacher.findMany({
+      prisma.section.findMany({
         where: {
-          teacherId: teacherProfile.id,
-          section: {
-            attendances: {
-              none: {
-                date: today,
-              },
+          id: { in: allSectionIds },
+          attendances: {
+            none: {
+              date: today,
             },
           },
         },
         include: {
-          section: {
-            include: {
-              class: true,
-              _count: {
-                select: { students: true },
-              },
-            },
+          class: true,
+          _count: {
+            select: { students: true },
           },
         },
       }),
@@ -109,11 +111,7 @@ export async function GET() {
       // Get total students across assigned sections
       prisma.studentProfile.count({
         where: {
-          section: {
-            teachers: {
-              some: { teacherId: teacherProfile.id },
-            },
-          },
+          sectionId: { in: allSectionIds },
         },
       }),
     ]);
@@ -125,10 +123,10 @@ export async function GET() {
 
     return NextResponse.json({
       stats: {
-        assignedSections,
+        assignedSections: allSectionIds.length,
         totalStudents,
         todayClasses: todaySchedule.length,
-        pendingAttendance: pendingAttendance.length,
+        pendingAttendance: pendingAttendanceSections.length,
         assessmentsToGrade: assessmentsNeedingGrading.length,
       },
       todaySchedule: todaySchedule.map((slot) => ({
@@ -140,10 +138,10 @@ export async function GET() {
         subject: slot.subject.name,
         subjectColor: slot.subject.color,
       })),
-      pendingAttendance: pendingAttendance.map((st) => ({
-        sectionId: st.section.id,
-        section: `${st.section.class.name} - ${st.section.name}`,
-        studentCount: st.section._count.students,
+      pendingAttendance: pendingAttendanceSections.map((section) => ({
+        sectionId: section.id,
+        section: `${section.class.name} - ${section.name}`,
+        studentCount: section._count.students,
       })),
       recentAssessments: recentAssessments.map((a) => ({
         id: a.id,

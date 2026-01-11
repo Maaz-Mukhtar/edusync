@@ -23,8 +23,8 @@ export async function GET() {
       return NextResponse.json({ error: "Teacher profile not found" }, { status: 404 });
     }
 
-    // Get assigned sections with details
-    const assignedSections = await prisma.sectionTeacher.findMany({
+    // Get sections where teacher is class teacher
+    const classTeacherSections = await prisma.sectionTeacher.findMany({
       where: { teacherId: teacherProfile.id },
       include: {
         section: {
@@ -50,11 +50,57 @@ export async function GET() {
           },
         },
       },
-      orderBy: [
-        { section: { class: { displayOrder: "asc" } } },
-        { section: { name: "asc" } },
-      ],
     });
+
+    // Get sections where teacher teaches subjects
+    const subjectTeacherSections = await prisma.sectionSubjectTeacher.findMany({
+      where: { teacherId: teacherProfile.id },
+      include: {
+        section: {
+          include: {
+            class: true,
+            students: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    email: true,
+                    avatar: true,
+                  },
+                },
+              },
+              orderBy: { rollNumber: "asc" },
+            },
+            _count: {
+              select: { students: true },
+            },
+          },
+        },
+      },
+    });
+
+    // Combine and deduplicate sections
+    const allSections = new Map<string, { section: typeof classTeacherSections[0]["section"]; isClassTeacher: boolean }>();
+
+    for (const ct of classTeacherSections) {
+      allSections.set(ct.sectionId, { section: ct.section, isClassTeacher: true });
+    }
+
+    for (const st of subjectTeacherSections) {
+      if (!allSections.has(st.sectionId)) {
+        allSections.set(st.sectionId, { section: st.section, isClassTeacher: false });
+      }
+    }
+
+    // Sort sections
+    const sectionsArray = Array.from(allSections.values())
+      .sort((a, b) => {
+        const orderDiff = a.section.class.displayOrder - b.section.class.displayOrder;
+        if (orderDiff !== 0) return orderDiff;
+        return a.section.name.localeCompare(b.section.name);
+      });
 
     // Get subjects taught by this teacher
     const subjectsTaught = await prisma.teacherSubject.findMany({
@@ -65,15 +111,15 @@ export async function GET() {
     });
 
     return NextResponse.json({
-      sections: assignedSections.map((st) => ({
-        id: st.section.id,
-        name: st.section.name,
-        className: st.section.class.name,
-        classId: st.section.class.id,
-        isClassTeacher: st.isClassTeacher,
-        capacity: st.section.capacity,
-        studentCount: st.section._count.students,
-        students: st.section.students.map((s) => ({
+      sections: sectionsArray.map((item) => ({
+        id: item.section.id,
+        name: item.section.name,
+        className: item.section.class.name,
+        classId: item.section.class.id,
+        isClassTeacher: item.isClassTeacher,
+        capacity: item.section.capacity,
+        studentCount: item.section._count.students,
+        students: item.section.students.map((s) => ({
           id: s.id,
           rollNumber: s.rollNumber,
           userId: s.user.id,

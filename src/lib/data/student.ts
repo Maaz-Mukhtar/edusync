@@ -250,59 +250,54 @@ async function fetchTimetableDataInternal(sectionId: string): Promise<TimetableD
       where: { sectionId },
       include: {
         subject: true,
-        section: {
-          include: {
-            teachers: {
-              include: {
-                teacher: {
-                  include: {
-                    user: {
-                      select: {
-                        firstName: true,
-                        lastName: true,
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
       },
       orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
     }),
   ]);
 
-  // Create a map of subject -> teacher for this section
-  const subjectTeacherMap = new Map<string, { id: string; name: string }>();
-  if (slots.length > 0) {
-    const sectionTeachers = slots[0].section.teachers;
-    for (const st of sectionTeachers) {
-      // Map based on subjects the teacher teaches in this section
-      subjectTeacherMap.set(st.teacherId, {
-        id: st.teacher.id,
-        name: `${st.teacher.user.firstName} ${st.teacher.user.lastName}`,
-      });
-    }
-  }
+  // Get teacher info for slots that have a teacherId
+  const teacherIds = [...new Set(slots.filter(s => s.teacherId).map(s => s.teacherId as string))];
+  const teachers = teacherIds.length > 0
+    ? await prisma.teacherProfile.findMany({
+        where: { id: { in: teacherIds } },
+        include: {
+          user: {
+            select: {
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      })
+    : [];
+
+  const teacherMap = new Map(teachers.map(t => [t.id, t]));
 
   return {
     className: section?.class.name || "N/A",
     sectionName: section?.name || "N/A",
-    slots: slots.map((slot) => ({
-      id: slot.id,
-      dayOfWeek: slot.dayOfWeek,
-      startTime: slot.startTime,
-      endTime: slot.endTime,
-      room: slot.room,
-      subject: {
-        id: slot.subject.id,
-        name: slot.subject.name,
-        code: slot.subject.code,
-        color: slot.subject.color,
-      },
-      teacher: slot.teacherId ? subjectTeacherMap.get(slot.teacherId) || null : null,
-    })),
+    slots: slots.map((slot) => {
+      const teacher = slot.teacherId ? teacherMap.get(slot.teacherId) : null;
+      return {
+        id: slot.id,
+        dayOfWeek: slot.dayOfWeek,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        room: slot.room,
+        subject: {
+          id: slot.subject.id,
+          name: slot.subject.name,
+          code: slot.subject.code,
+          color: slot.subject.color,
+        },
+        teacher: teacher
+          ? {
+              id: teacher.id,
+              name: `${teacher.user.firstName} ${teacher.user.lastName}`,
+            }
+          : null,
+      };
+    }),
   };
 }
 
