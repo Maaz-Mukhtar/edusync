@@ -846,6 +846,7 @@ export interface AssessmentItem {
   };
   gradedCount: number;
   totalStudents: number;
+  questionCount: number;
   createdAt: Date;
 }
 
@@ -921,7 +922,7 @@ async function fetchAssessmentsDataInternal(teacherId: string): Promise<Assessme
         },
         subject: true,
         _count: {
-          select: { results: true },
+          select: { results: true, questions: true },
         },
       },
       orderBy: { date: "desc" },
@@ -962,6 +963,7 @@ async function fetchAssessmentsDataInternal(teacherId: string): Promise<Assessme
       },
       gradedCount: a._count.results,
       totalStudents: countMap.get(a.sectionId) || 0,
+      questionCount: a._count.questions,
       createdAt: a.createdAt,
     })),
     sections: sectionsArray.map((section) => ({
@@ -992,4 +994,249 @@ const getCachedAssessmentsData = (teacherId: string) =>
 export async function getTeacherAssessmentsData(): Promise<AssessmentsData> {
   const teacherProfile = await getTeacherProfile();
   return getCachedAssessmentsData(teacherProfile.id);
+}
+
+// ============================================
+// ONLINE TESTS DATA
+// ============================================
+
+export type OnlineTestStatus = "DRAFT" | "PUBLISHED" | "CLOSED";
+
+export interface OnlineTestItem {
+  id: string;
+  status: OnlineTestStatus;
+  timeLimitMins: number | null;
+  questionCount: number;
+  attemptCount: number;
+  passingScore: number | null;
+  startTime: Date | null;
+  endTime: Date | null;
+  createdAt: Date;
+  assessment: {
+    id: string;
+    title: string;
+    totalMarks: number;
+    date: Date;
+  };
+  section: {
+    id: string;
+    name: string;
+  };
+  subject: {
+    id: string;
+    name: string;
+    color: string | null;
+  };
+}
+
+export interface OnlineTestSection {
+  id: string;
+  name: string;
+  className: string;
+}
+
+export interface OnlineTestSubject {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+export interface OnlineTestsData {
+  onlineTests: OnlineTestItem[];
+  sections: OnlineTestSection[];
+  subjects: OnlineTestSubject[];
+  assessmentsWithoutTests: {
+    id: string;
+    title: string;
+    section: { id: string; name: string };
+    subject: { id: string; name: string };
+    date: Date;
+  }[];
+}
+
+// Internal function to fetch online tests data (cacheable)
+async function fetchOnlineTestsDataInternal(teacherId: string): Promise<OnlineTestsData> {
+  // Get sections where teacher is class teacher
+  const classTeacherSections = await prisma.sectionTeacher.findMany({
+    where: { teacherId },
+    include: {
+      section: {
+        include: { class: true },
+      },
+    },
+  });
+
+  // Get sections where teacher teaches subjects
+  const subjectTeacherSections = await prisma.sectionSubjectTeacher.findMany({
+    where: { teacherId },
+    include: {
+      section: {
+        include: { class: true },
+      },
+    },
+  });
+
+  // Combine sections
+  const allSections = new Map<string, typeof classTeacherSections[0]["section"]>();
+
+  for (const ct of classTeacherSections) {
+    allSections.set(ct.sectionId, ct.section);
+  }
+
+  for (const st of subjectTeacherSections) {
+    if (!allSections.has(st.sectionId)) {
+      allSections.set(st.sectionId, st.section);
+    }
+  }
+
+  // Sort sections
+  const sectionsArray = Array.from(allSections.values())
+    .sort((a, b) => {
+      const orderDiff = a.class.displayOrder - b.class.displayOrder;
+      if (orderDiff !== 0) return orderDiff;
+      return a.name.localeCompare(b.name);
+    });
+
+  // Fetch all data in parallel
+  const [onlineTests, subjects, assessmentsWithoutTests] = await Promise.all([
+    // Get online tests
+    prisma.onlineTest.findMany({
+      where: {
+        assessment: {
+          createdById: teacherId,
+        },
+      },
+      include: {
+        assessment: {
+          include: {
+            section: {
+              include: { class: true },
+            },
+            subject: true,
+            _count: {
+              select: { questions: true },
+            },
+          },
+        },
+        _count: {
+          select: { attempts: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    // Get subjects
+    prisma.teacherSubject.findMany({
+      where: { teacherId },
+      include: {
+        subject: true,
+      },
+    }),
+    // Get assessments without online tests
+    prisma.assessment.findMany({
+      where: {
+        createdById: teacherId,
+        onlineTest: null,
+      },
+      include: {
+        section: {
+          include: { class: true },
+        },
+        subject: true,
+      },
+      orderBy: { date: "desc" },
+    }),
+  ]);
+
+  return {
+    onlineTests: onlineTests.map((ot) => ({
+      id: ot.id,
+      status: ot.status as OnlineTestStatus,
+      timeLimitMins: ot.timeLimitMins,
+      questionCount: ot.assessment._count.questions,
+      attemptCount: ot._count.attempts,
+      passingScore: ot.passingScore,
+      startTime: ot.startTime,
+      endTime: ot.endTime,
+      createdAt: ot.createdAt,
+      assessment: {
+        id: ot.assessment.id,
+        title: ot.assessment.title,
+        totalMarks: ot.assessment.totalMarks,
+        date: ot.assessment.date,
+      },
+      section: {
+        id: ot.assessment.section.id,
+        name: `${ot.assessment.section.class.name} - ${ot.assessment.section.name}`,
+      },
+      subject: {
+        id: ot.assessment.subject.id,
+        name: ot.assessment.subject.name,
+        color: ot.assessment.subject.color,
+      },
+    })),
+    sections: sectionsArray.map((section) => ({
+      id: section.id,
+      name: section.name,
+      className: section.class.name,
+    })),
+    subjects: subjects.map((ts) => ({
+      id: ts.subject.id,
+      name: ts.subject.name,
+      color: ts.subject.color,
+    })),
+    assessmentsWithoutTests: assessmentsWithoutTests.map((a) => ({
+      id: a.id,
+      title: a.title,
+      section: {
+        id: a.section.id,
+        name: `${a.section.class.name} - ${a.section.name}`,
+      },
+      subject: {
+        id: a.subject.id,
+        name: a.subject.name,
+      },
+      date: a.date,
+    })),
+  };
+}
+
+// Cached version of online tests data fetch
+const getCachedOnlineTestsData = (teacherId: string) =>
+  unstable_cache(
+    () => fetchOnlineTestsDataInternal(teacherId),
+    [`teacher-online-tests-${teacherId}`],
+    {
+      revalidate: CACHE_REVALIDATE_SECONDS,
+      tags: [`teacher-${teacherId}`, "teacher-online-tests"],
+    }
+  )();
+
+// Public function to get online tests data
+export async function getTeacherOnlineTestsData(): Promise<OnlineTestsData> {
+  const teacherProfile = await getTeacherProfile();
+  return getCachedOnlineTestsData(teacherProfile.id);
+}
+
+// ============================================
+// COMBINED ASSESSMENTS PAGE DATA
+// ============================================
+
+export interface CombinedAssessmentsData {
+  assessments: AssessmentsData;
+  onlineTests: OnlineTestsData;
+}
+
+// Public function to get combined data for the tabbed assessments page
+export async function getCombinedAssessmentsData(): Promise<CombinedAssessmentsData> {
+  const teacherProfile = await getTeacherProfile();
+
+  const [assessments, onlineTests] = await Promise.all([
+    getCachedAssessmentsData(teacherProfile.id),
+    getCachedOnlineTestsData(teacherProfile.id),
+  ]);
+
+  return {
+    assessments,
+    onlineTests,
+  };
 }

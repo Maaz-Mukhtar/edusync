@@ -123,15 +123,23 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validatedData = createAssessmentSchema.parse(body);
 
-    // Verify teacher has access to this section
-    const hasAccess = await prisma.sectionTeacher.findFirst({
-      where: {
-        teacherId: teacherProfile.id,
-        sectionId: validatedData.sectionId,
-      },
-    });
+    // Verify teacher has access to this section (either as class teacher or subject teacher)
+    const [isClassTeacher, isSubjectTeacher] = await Promise.all([
+      prisma.sectionTeacher.findFirst({
+        where: {
+          teacherId: teacherProfile.id,
+          sectionId: validatedData.sectionId,
+        },
+      }),
+      prisma.sectionSubjectTeacher.findFirst({
+        where: {
+          teacherId: teacherProfile.id,
+          sectionId: validatedData.sectionId,
+        },
+      }),
+    ]);
 
-    if (!hasAccess) {
+    if (!isClassTeacher && !isSubjectTeacher) {
       return NextResponse.json({ error: "Access denied to this section" }, { status: 403 });
     }
 

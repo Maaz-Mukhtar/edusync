@@ -160,6 +160,7 @@ model StudentProfile {
   insights       StudentInsight[]
   eventApprovals EventApproval[]
   conversations  Conversation[]
+  testAttempts   TestAttempt[]      // Online test attempts
 
   @@index([sectionId])
 }
@@ -386,11 +387,14 @@ model Assessment {
   description String?
   createdAt   DateTime       @default(now())
 
-  section   Section            @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  subject   Subject            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  term      Term?              @relation(fields: [termId], references: [id])
-  createdBy TeacherProfile     @relation(fields: [createdById], references: [id])
-  results   AssessmentResult[]
+  section    Section            @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject    Subject            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  term       Term?              @relation(fields: [termId], references: [id])
+  createdBy  TeacherProfile     @relation(fields: [createdById], references: [id])
+  results    AssessmentResult[]
+  onlineTest OnlineTest?        // Optional one-to-one relationship with online test
+  questions  Question[]         // Questions for this assessment
+  files      AssessmentFile[]   // Uploaded files (PDF, images, docs)
 
   @@index([sectionId])
   @@index([subjectId])
@@ -594,4 +598,140 @@ model EventApproval {
   @@index([studentId])
   @@index([parentId])
   @@index([status])
+}
+
+// ==================== ONLINE TESTS ====================
+
+enum QuestionType {
+  MCQ          // Multiple choice, single answer
+  SHORT_ANSWER // Text-based, manually graded
+}
+
+enum FileType {
+  PDF
+  IMAGE
+  DOCUMENT
+}
+
+enum OnlineTestStatus {
+  DRAFT     // Being created, not visible to students
+  PUBLISHED // Available for students to take
+  CLOSED    // No longer accepting submissions
+}
+
+enum TestAttemptStatus {
+  IN_PROGRESS // Student currently taking the test
+  SUBMITTED   // Student submitted, awaiting grading
+  GRADED      // All questions graded
+}
+
+model OnlineTest {
+  id               String           @id @default(cuid())
+  assessmentId     String           @unique
+  status           OnlineTestStatus @default(DRAFT)
+  timeLimitMins    Int?             // Optional time limit in minutes
+  instructions     String?          @db.Text
+  shuffleQuestions Boolean          @default(false)
+  showResults      Boolean          @default(true) // Show results to student after submission
+  passingScore     Float?           // Optional passing percentage
+  startTime        DateTime?        // When test becomes available
+  endTime          DateTime?        // When test closes
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  assessment Assessment    @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  attempts   TestAttempt[] // Questions are accessed via assessment.questions
+
+  @@index([assessmentId])
+  @@index([status])
+}
+
+model AssessmentFile {
+  id           String   @id @default(cuid())
+  assessmentId String
+  fileName     String   // Generated unique filename
+  originalName String   // Original uploaded filename
+  fileType     FileType
+  fileSize     Int      // Size in bytes
+  mimeType     String
+  storagePath  String   // Path where file is stored
+  uploadedAt   DateTime @default(now())
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@index([assessmentId])
+}
+
+model Question {
+  id           String       @id @default(cuid())
+  assessmentId String       // Questions belong to Assessment
+  type         QuestionType
+  questionText String       @db.Text
+  marks        Float
+  orderIndex   Int          // For ordering questions
+  explanation  String?      @db.Text // Shown after submission (optional)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  assessment Assessment       @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  options    QuestionOption[] // For MCQ questions
+  answers    StudentAnswer[]
+
+  @@index([assessmentId])
+  @@index([orderIndex])
+}
+
+model QuestionOption {
+  id         String  @id @default(cuid())
+  questionId String
+  optionText String  @db.Text
+  isCorrect  Boolean @default(false)
+  orderIndex Int     // For ordering options
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+}
+
+model TestAttempt {
+  id            String            @id @default(cuid())
+  onlineTestId  String
+  studentId     String
+  status        TestAttemptStatus @default(IN_PROGRESS)
+  startedAt     DateTime          @default(now())
+  submittedAt   DateTime?
+  timeTakenSecs Int?              // Actual time taken in seconds
+  totalScore    Float?            // Calculated after grading
+  maxScore      Float?            // Total possible marks
+  percentage    Float?            // Calculated percentage
+  isPassed      Boolean?          // Based on passingScore if set
+
+  onlineTest OnlineTest      @relation(fields: [onlineTestId], references: [id], onDelete: Cascade)
+  student    StudentProfile  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  answers    StudentAnswer[]
+
+  @@unique([onlineTestId, studentId]) // One attempt per student per test
+  @@index([onlineTestId])
+  @@index([studentId])
+  @@index([status])
+}
+
+model StudentAnswer {
+  id               String    @id @default(cuid())
+  attemptId        String
+  questionId       String
+  answerText       String?   @db.Text // For short answer questions
+  selectedOptionId String?   // For MCQ questions (stores the selected option ID)
+  isCorrect        Boolean?  // Null until graded (auto for MCQ, manual for short-answer)
+  marksAwarded     Float?    // Null until graded
+  feedback         String?   // Teacher feedback for short-answer questions
+  gradedAt         DateTime?
+  gradedBy         String?   // Teacher profile ID who graded (for short-answer)
+
+  attempt  TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, questionId]) // One answer per question per attempt
+  @@index([attemptId])
+  @@index([questionId])
 }

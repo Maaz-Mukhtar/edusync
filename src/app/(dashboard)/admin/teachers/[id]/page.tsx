@@ -235,7 +235,7 @@ export default function TeacherDetailsPage({ params }: { params: Promise<{ id: s
       const response = await fetch(`/api/classes/${selectedClassId}/subjects/${selectedSubjectId}/teachers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teacherIds: [teacher.teacherProfile.id] }),
+        body: JSON.stringify({ teacherId: teacher.teacherProfile.id }),
       });
 
       if (response.ok) {
@@ -260,18 +260,10 @@ export default function TeacherDetailsPage({ params }: { params: Promise<{ id: s
     if (!teacher?.teacherProfile) return;
 
     try {
-      const getRes = await fetch(`/api/classes/${classId}/subjects/${subjectId}/teachers`);
-      const getData = await getRes.json();
-
-      const updatedTeacherIds = getData.teachers
-        .filter((t: { id: string }) => t.id !== teacher.teacherProfile!.id)
-        .map((t: { id: string }) => t.id);
-
-      const response = await fetch(`/api/classes/${classId}/subjects/${subjectId}/teachers`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teacherIds: updatedTeacherIds }),
-      });
+      const response = await fetch(
+        `/api/classes/${classId}/subjects/${subjectId}/teachers?teacherId=${teacher.teacherProfile.id}`,
+        { method: "DELETE" }
+      );
 
       if (response.ok) {
         toast.success("Subject removed successfully");

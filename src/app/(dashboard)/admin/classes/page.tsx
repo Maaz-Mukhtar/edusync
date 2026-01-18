@@ -213,7 +213,7 @@ export default function ClassesPage() {
       if (response.ok) {
         setSectionInfo(data.section);
         setSubjectAssignments(data.subjectAssignments);
-        setSelectedClassTeacherId(data.section.classTeacher?.id || "");
+        setSelectedClassTeacherId(data.section.classTeacher?.id || "__none__");
       } else {
         toast.error("Failed to load section data");
       }
@@ -237,7 +237,7 @@ export default function ClassesPage() {
 
     setSavingTeacher(true);
     try {
-      if (selectedClassTeacherId) {
+      if (selectedClassTeacherId && selectedClassTeacherId !== "__none__") {
         const response = await fetch(`/api/sections/${selectedSectionForTeachers.section.id}/class-teacher`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -275,7 +275,7 @@ export default function ClassesPage() {
 
     setSavingTeacher(true);
     try {
-      if (teacherId) {
+      if (teacherId && teacherId !== "__none__") {
         const response = await fetch(`/api/sections/${selectedSectionForTeachers.section.id}/subjects`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -768,7 +768,7 @@ export default function ClassesPage() {
                       <SelectValue placeholder="Select class teacher" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">No class teacher</SelectItem>
+                      <SelectItem value="__none__">No class teacher</SelectItem>
                       {allTeachers.map((teacher) => (
                         <SelectItem key={teacher.teacherProfileId} value={teacher.teacherProfileId}>
                           {teacher.firstName} {teacher.lastName}
@@ -813,7 +813,7 @@ export default function ClassesPage() {
                           )}
                         </div>
                         <Select
-                          value={assignment.assignedTeacher?.id || ""}
+                          value={assignment.assignedTeacher?.id || "__none__"}
                           onValueChange={(value) => handleAssignSubjectTeacher(assignment.subjectId, value)}
                           disabled={savingTeacher}
                         >
@@ -821,7 +821,7 @@ export default function ClassesPage() {
                             <SelectValue placeholder="Select teacher" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">Not assigned</SelectItem>
+                            <SelectItem value="__none__">Not assigned</SelectItem>
                             {assignment.availableTeachers.map((teacher) => (
                               <SelectItem key={teacher.id} value={teacher.id}>
                                 {teacher.firstName} {teacher.lastName}

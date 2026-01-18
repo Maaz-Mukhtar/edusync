@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,11 +44,14 @@ import {
   Trash2,
   AlertCircle,
   CheckCircle,
+  Pencil,
+  FileQuestion,
 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type {
@@ -65,11 +69,12 @@ const typeColors: Record<AssessmentType, string> = {
   EXAM: "bg-red-100 text-red-800",
 };
 
-interface AssessmentsContentProps {
+interface AssessmentsTabProps {
   initialData: AssessmentsData;
 }
 
-export default function AssessmentsContent({ initialData }: AssessmentsContentProps) {
+export default function AssessmentsTab({ initialData }: AssessmentsTabProps) {
+  const router = useRouter();
   const [assessments, setAssessments] = useState<AssessmentItem[]>(initialData.assessments);
   const [sections] = useState<AssessmentSection[]>(initialData.sections);
   const [subjects] = useState<AssessmentSubject[]>(initialData.subjects);
@@ -101,7 +106,7 @@ export default function AssessmentsContent({ initialData }: AssessmentsContentPr
       if (filterType !== "all") params.append("type", filterType);
       if (params.toString()) url += `?${params.toString()}`;
 
-      const response = await fetch(url);
+      const response = await fetch(url, { cache: "no-store" });
       if (response.ok) {
         const data = await response.json();
         setAssessments(data.assessments);
@@ -111,7 +116,7 @@ export default function AssessmentsContent({ initialData }: AssessmentsContentPr
     }
   }, [filterSection, filterType]);
 
-  // Filter assessments client-side for initial render, then fetch when filters change
+  // Filter assessments client-side for initial render
   const filteredAssessments = assessments.filter((a) => {
     if (filterSection !== "all" && a.section.id !== filterSection) return false;
     if (filterType !== "all" && a.type !== filterType) return false;
@@ -135,6 +140,7 @@ export default function AssessmentsContent({ initialData }: AssessmentsContentPr
       });
 
       if (response.ok) {
+        const result = await response.json();
         setSuccess("Assessment created successfully");
         setDialogOpen(false);
         setFormData({
@@ -147,6 +153,11 @@ export default function AssessmentsContent({ initialData }: AssessmentsContentPr
           description: "",
         });
         refreshAssessments();
+        router.refresh();
+        // Navigate to the question builder for the new assessment
+        if (result.assessment?.id) {
+          router.push(`/teacher/assessments/${result.assessment.id}/builder`);
+        }
       } else {
         const result = await response.json();
         setError(result.error || "Failed to create assessment");
@@ -170,6 +181,7 @@ export default function AssessmentsContent({ initialData }: AssessmentsContentPr
       if (response.ok) {
         setSuccess("Assessment deleted");
         refreshAssessments();
+        router.refresh();
       } else {
         setError("Failed to delete assessment");
       }
@@ -180,16 +192,12 @@ export default function AssessmentsContent({ initialData }: AssessmentsContentPr
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-4">
+      {/* Action Bar */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Assessments</h1>
-          <p className="text-muted-foreground">
-            Create and manage tests, quizzes, and assignments
-          </p>
-        </div>
-
+        <p className="text-sm text-muted-foreground">
+          Create printable tests with questions, or grade paper-based assessments
+        </p>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -317,7 +325,7 @@ export default function AssessmentsContent({ initialData }: AssessmentsContentPr
                 Cancel
               </Button>
               <Button onClick={handleCreate} disabled={creating}>
-                {creating ? "Creating..." : "Create Assessment"}
+                {creating ? "Creating..." : "Create & Add Questions"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -402,6 +410,7 @@ export default function AssessmentsContent({ initialData }: AssessmentsContentPr
                   <TableHead>Subject</TableHead>
                   <TableHead className="text-center">Type</TableHead>
                   <TableHead className="text-center">Marks</TableHead>
+                  <TableHead className="text-center">Questions</TableHead>
                   <TableHead className="text-center">Progress</TableHead>
                   <TableHead className="text-center">Date</TableHead>
                   <TableHead className="w-12"></TableHead>
@@ -429,6 +438,12 @@ export default function AssessmentsContent({ initialData }: AssessmentsContentPr
                     <TableCell className="text-center">{assessment.totalMarks}</TableCell>
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-1">
+                        <FileQuestion className="h-4 w-4 text-muted-foreground" />
+                        <span>{assessment.questionCount || 0}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex items-center justify-center gap-1">
                         <Users className="h-4 w-4 text-muted-foreground" />
                         <span>
                           {assessment.gradedCount}/{assessment.totalStudents}
@@ -450,11 +465,18 @@ export default function AssessmentsContent({ initialData }: AssessmentsContentPr
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem asChild>
+                            <Link href={`/teacher/assessments/${assessment.id}/builder`}>
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Edit Questions
+                            </Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem asChild>
                             <Link href={`/teacher/assessments/${assessment.id}`}>
                               <Eye className="h-4 w-4 mr-2" />
                               View & Grade
                             </Link>
                           </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-red-600"
                             onClick={() => handleDelete(assessment.id)}

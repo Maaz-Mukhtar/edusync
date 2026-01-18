@@ -24,6 +24,8 @@ import {
   UserCog,
   Users2,
   Shield,
+  Grid3X3,
+  ListChecks,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@prisma/client";
@@ -42,6 +44,7 @@ const adminNavItems: NavItem[] = [
   { title: "Administrators", href: "/admin/users", icon: Shield },
   { title: "Classes", href: "/admin/classes", icon: School },
   { title: "Subjects", href: "/admin/subjects", icon: BookOpen },
+  { title: "Assignments", href: "/admin/assignments", icon: Grid3X3 },
   { title: "Parent Links", href: "/admin/parent-links", icon: Link2 },
   { title: "Fee Management", href: "/admin/fees", icon: DollarSign },
   { title: "Events", href: "/admin/events", icon: CalendarCheck },
@@ -56,6 +59,7 @@ const teacherNavItems: NavItem[] = [
   { title: "Attendance", href: "/teacher/attendance", icon: CheckSquare },
   { title: "Gradebook", href: "/teacher/gradebook", icon: ClipboardList },
   { title: "Assessments", href: "/teacher/assessments", icon: FileText },
+  { title: "Online Tests", href: "/teacher/online-tests", icon: ListChecks },
   { title: "Announcements", href: "/teacher/announcements", icon: Bell },
   { title: "Messages", href: "/teacher/messages", icon: MessageSquare },
   { title: "AI Insights", href: "/teacher/insights", icon: Brain },
@@ -67,6 +71,7 @@ const studentNavItems: NavItem[] = [
   { title: "Attendance", href: "/student/attendance", icon: CheckSquare },
   { title: "Grades", href: "/student/grades", icon: GraduationCap },
   { title: "Assignments", href: "/student/assignments", icon: FileText },
+  { title: "Online Tests", href: "/student/tests", icon: ListChecks },
   { title: "Calendar", href: "/student/calendar", icon: Calendar },
   { title: "AI Study Help", href: "/student/ai-help", icon: Brain },
   { title: "Announcements", href: "/student/announcements", icon: Bell },
