@@ -47,6 +47,14 @@ enum InvoiceStatus {
   CANCELLED
 }
 
+enum EnrollmentStatus {
+  ACTIVE      // Currently enrolled
+  PROMOTED    // Promoted to next grade
+  GRADUATED   // Completed highest grade (alumni)
+  LEFT        // Left the school
+  RETAINED    // Retained in same grade (failed)
+}
+
 // ==================== CORE MODELS ====================
 
 model School {
@@ -144,15 +152,16 @@ model VerificationToken {
 model StudentProfile {
   id            String    @id @default(cuid())
   userId        String    @unique
-  sectionId     String
+  sectionId     String    // Current section (kept for backwards compatibility)
   rollNumber    String?
   dateOfBirth   DateTime?
   admissionDate DateTime?
   bloodGroup    String?
   address       String?
 
-  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  section        Section            @relation(fields: [sectionId], references: [id])
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  section        Section             @relation(fields: [sectionId], references: [id])
+  enrollments    StudentEnrollment[] // Year-by-year enrollment history
   parents        ParentStudent[]
   attendances    Attendance[]
   results        AssessmentResult[]
@@ -160,7 +169,7 @@ model StudentProfile {
   insights       StudentInsight[]
   eventApprovals EventApproval[]
   conversations  Conversation[]
-  testAttempts   TestAttempt[]      // Online test attempts
+  testAttempts   TestAttempt[]       // Online test attempts
 
   @@index([sectionId])
 }
@@ -217,11 +226,36 @@ model AcademicYear {
   endDate   DateTime
   isCurrent Boolean  @default(false)
 
-  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  terms  Term[]
+  school      School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  terms       Term[]
+  enrollments StudentEnrollment[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
+  @@index([isCurrent])
+}
+
+model StudentEnrollment {
+  id             String           @id @default(cuid())
+  studentId      String
+  academicYearId String
+  sectionId      String
+  rollNumber     String?
+  status         EnrollmentStatus @default(ACTIVE)
+  promotedFromId String?          @unique // Previous enrollment (one-to-one)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  student      StudentProfile     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear       @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  section      Section            @relation(fields: [sectionId], references: [id])
+  promotedFrom StudentEnrollment? @relation("PromotionChain", fields: [promotedFromId], references: [id])
+  promotedTo   StudentEnrollment? @relation("PromotionChain")
+
+  @@unique([studentId, academicYearId])
+  @@index([academicYearId])
+  @@index([sectionId])
+  @@index([status])
 }
 
 model Term {
@@ -258,9 +292,10 @@ model Section {
   name     String
   capacity Int?
 
-  class           Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
+  class           Class               @relation(fields: [classId], references: [id], onDelete: Cascade)
   students        StudentProfile[]
-  classTeacher    SectionTeacher?  // One class teacher per section
+  enrollments     StudentEnrollment[] // Year-wise enrollments
+  classTeacher    SectionTeacher?     // One class teacher per section
   subjectTeachers SectionSubjectTeacher[] // Subject-wise teacher assignments
   timetable       TimetableSlot[]
   attendances     Attendance[]

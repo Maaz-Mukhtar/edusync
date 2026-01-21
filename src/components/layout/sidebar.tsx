@@ -9,6 +9,7 @@ import {
   BookOpen,
   Calendar,
   CalendarCheck,
+  CalendarDays,
   ClipboardList,
   DollarSign,
   Bell,
@@ -38,6 +39,7 @@ interface NavItem {
 
 const adminNavItems: NavItem[] = [
   { title: "Dashboard", href: "/admin", icon: LayoutDashboard },
+  { title: "Academic Years", href: "/admin/academic-years", icon: CalendarDays },
   { title: "Students", href: "/admin/students", icon: GraduationCap },
   { title: "Teachers", href: "/admin/teachers", icon: UserCog },
   { title: "Parents", href: "/admin/parents", icon: Users2 },
