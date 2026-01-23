@@ -38,6 +38,7 @@ export async function GET() {
         _count: {
           select: {
             sections: true,
+            subjects: true,
           },
         },
       },

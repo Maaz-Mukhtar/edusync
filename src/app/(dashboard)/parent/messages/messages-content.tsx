@@ -171,7 +171,7 @@ export default function MessagesContent({
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Messages</h1>
           <p className="text-muted-foreground">
-            Communicate with your children's teachers
+            Communicate with your children&apos;s teachers
           </p>
         </div>
         <Dialog open={newConversationOpen} onOpenChange={setNewConversationOpen}>

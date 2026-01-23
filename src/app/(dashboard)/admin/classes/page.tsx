@@ -11,8 +11,9 @@ import {
   School,
   MoreHorizontal,
   UserPlus,
-  X,
   Crown,
+  Layers,
+  LayoutGrid,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -62,7 +63,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
+
+// Naming convention presets for bulk creation
+const NAMING_PRESETS: Record<string, string[]> = {
+  letters: ["A", "B", "C", "D", "E", "F", "G", "H"],
+  colors: ["Blue", "Green", "Red", "Yellow", "Orange", "Purple", "Pink", "White"],
+  numbers: ["1", "2", "3", "4", "5", "6", "7", "8"],
+  roman: ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"],
+};
+
+const GRADE_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 interface Teacher {
   id: string; // User ID
@@ -114,6 +135,14 @@ interface Class {
   };
 }
 
+interface TeachingAssignmentsResponse {
+  class: { id: string; name: string };
+  sections: Array<{ id: string; name: string }>;
+  subjects: Array<{ id: string; name: string; code: string | null; color: string | null }>;
+  teachers: Array<{ id: string; firstName: string; lastName: string }>;
+  assignments: Array<{ sectionId: string; subjectId: string; teacherId: string }>;
+}
+
 export default function ClassesPage() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -134,16 +163,35 @@ export default function ClassesPage() {
   const [loadingTeachers, setLoadingTeachers] = useState(false);
   const [savingTeacher, setSavingTeacher] = useState(false);
 
+  // Class-wide teaching assignments matrix
+  const [teachingDialogOpen, setTeachingDialogOpen] = useState(false);
+  const [selectedClassForTeaching, setSelectedClassForTeaching] = useState<Class | null>(null);
+  const [teachingSections, setTeachingSections] = useState<Array<{ id: string; name: string }>>([]);
+  const [teachingSubjects, setTeachingSubjects] = useState<Array<{ id: string; name: string; code: string | null; color: string | null }>>([]);
+  const [teachingTeachers, setTeachingTeachers] = useState<Array<{ id: string; firstName: string; lastName: string }>>([]);
+  const [teachingInitial, setTeachingInitial] = useState<Map<string, string | null>>(new Map());
+  const [teachingDraft, setTeachingDraft] = useState<Map<string, string | null>>(new Map());
+  const [teachingLoading, setTeachingLoading] = useState(false);
+  const [teachingSaving, setTeachingSaving] = useState(false);
+
   // Form states
   const [editingClass, setEditingClass] = useState<Class | null>(null);
   const [editingSection, setEditingSection] = useState<{ section: Section; classId: string } | null>(null);
   const [deletingItem, setDeletingItem] = useState<{ type: "class" | "section"; id: string; name: string } | null>(null);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
 
-  // Form data
+  // Form data - Single Class
   const [className, setClassName] = useState("");
   const [sectionName, setSectionName] = useState("");
   const [sectionCapacity, setSectionCapacity] = useState("");
+
+  // Form data - Bulk Setup
+  const [activeTab, setActiveTab] = useState("single");
+  const [bulkFromGrade, setBulkFromGrade] = useState(1);
+  const [bulkToGrade, setBulkToGrade] = useState(12);
+  const [bulkSectionsPerClass, setBulkSectionsPerClass] = useState(3);
+  const [bulkNamingConvention, setBulkNamingConvention] = useState("letters");
+  const [bulkCustomNames, setBulkCustomNames] = useState("");
 
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -203,6 +251,107 @@ export default function ClassesPage() {
   useEffect(() => {
     fetchAllTeachers();
   }, [fetchAllTeachers]);
+
+  const makeTeachingKey = (sectionId: string, subjectId: string) => `${sectionId}:${subjectId}`;
+
+  const openTeachingAssignmentsDialog = async (cls: Class) => {
+    setSelectedClassForTeaching(cls);
+    setTeachingDialogOpen(true);
+    setTeachingLoading(true);
+
+    try {
+      const response = await fetch(`/api/classes/${cls.id}/teaching-assignments`);
+      const data = (await response.json()) as TeachingAssignmentsResponse & { error?: string };
+
+      if (!response.ok) {
+        toast.error(data.error || "Failed to load teaching assignments");
+        return;
+      }
+
+      setTeachingSections(data.sections);
+      setTeachingSubjects(data.subjects);
+      setTeachingTeachers(data.teachers);
+
+      const initial = new Map<string, string | null>();
+      for (const section of data.sections) {
+        for (const subject of data.subjects) {
+          initial.set(makeTeachingKey(section.id, subject.id), null);
+        }
+      }
+
+      for (const a of data.assignments) {
+        initial.set(makeTeachingKey(a.sectionId, a.subjectId), a.teacherId);
+      }
+
+      setTeachingInitial(initial);
+      setTeachingDraft(new Map(initial));
+    } catch {
+      toast.error("Failed to load teaching assignments");
+    } finally {
+      setTeachingLoading(false);
+    }
+  };
+
+  const setTeachingCell = (sectionId: string, subjectId: string, teacherId: string | null) => {
+    const key = makeTeachingKey(sectionId, subjectId);
+    setTeachingDraft((prev) => {
+      const next = new Map(prev);
+      next.set(key, teacherId);
+      return next;
+    });
+  };
+
+  const setTeachingSubjectAll = (subjectId: string, teacherId: string | null) => {
+    setTeachingDraft((prev) => {
+      const next = new Map(prev);
+      for (const section of teachingSections) {
+        next.set(makeTeachingKey(section.id, subjectId), teacherId);
+      }
+      return next;
+    });
+  };
+
+  const handleSaveTeachingAssignments = async () => {
+    if (!selectedClassForTeaching) return;
+
+    const changes: Array<{ sectionId: string; subjectId: string; teacherId: string | null }> = [];
+    for (const [key, nextTeacherId] of teachingDraft.entries()) {
+      const prevTeacherId = teachingInitial.get(key) ?? null;
+      if (nextTeacherId !== prevTeacherId) {
+        const [sectionId, subjectId] = key.split(":");
+        changes.push({ sectionId, subjectId, teacherId: nextTeacherId });
+      }
+    }
+
+    if (changes.length === 0) {
+      toast.info("No changes to save");
+      setTeachingDialogOpen(false);
+      return;
+    }
+
+    setTeachingSaving(true);
+    try {
+      const response = await fetch(`/api/classes/${selectedClassForTeaching.id}/teaching-assignments`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignments: changes }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast.error(data.error || "Failed to save teaching assignments");
+        return;
+      }
+
+      toast.success(`Saved ${changes.length} assignment${changes.length !== 1 ? "s" : ""}`);
+      setTeachingInitial(new Map(teachingDraft));
+      setTeachingDialogOpen(false);
+    } catch {
+      toast.error("Failed to save teaching assignments");
+    } finally {
+      setTeachingSaving(false);
+    }
+  };
 
   // Fetch section subjects and teacher assignments
   const fetchSectionSubjects = async (sectionId: string) => {
@@ -322,11 +471,106 @@ export default function ClassesPage() {
     if (classData) {
       setEditingClass(classData);
       setClassName(classData.name);
+      setActiveTab("single"); // Always open in single mode when editing
     } else {
       setEditingClass(null);
       setClassName("");
+      // Reset bulk form
+      setBulkFromGrade(1);
+      setBulkToGrade(12);
+      setBulkSectionsPerClass(3);
+      setBulkNamingConvention("letters");
+      setBulkCustomNames("");
     }
     setClassDialogOpen(true);
+  };
+
+  // Get section names based on naming convention
+  const getBulkSectionNames = () => {
+    if (bulkNamingConvention === "custom") {
+      return bulkCustomNames
+        .split(",")
+        .map((n) => n.trim())
+        .filter((n) => n)
+        .slice(0, bulkSectionsPerClass);
+    }
+    return NAMING_PRESETS[bulkNamingConvention]?.slice(0, bulkSectionsPerClass) || [];
+  };
+
+  // Generate preview data for bulk creation
+  const getBulkPreview = () => {
+    const sectionNames = getBulkSectionNames();
+    const preview = [];
+    for (let grade = bulkFromGrade; grade <= bulkToGrade; grade++) {
+      preview.push({
+        name: `Grade ${grade}`,
+        sections: sectionNames.join(", "),
+      });
+    }
+    return preview;
+  };
+
+  // Handle bulk class creation
+  const handleBulkCreate = async () => {
+    // Validate
+    if (bulkFromGrade > bulkToGrade) {
+      toast.error("From grade must be less than or equal to To grade");
+      return;
+    }
+
+    if (bulkNamingConvention === "custom") {
+      const customNamesList = bulkCustomNames
+        .split(",")
+        .map((n) => n.trim())
+        .filter((n) => n);
+      if (customNamesList.length < bulkSectionsPerClass) {
+        toast.error(
+          `Please provide at least ${bulkSectionsPerClass} section names (comma-separated)`
+        );
+        return;
+      }
+    }
+
+    setIsSaving(true);
+    try {
+      const customNamesList =
+        bulkNamingConvention === "custom"
+          ? bulkCustomNames
+              .split(",")
+              .map((n) => n.trim())
+              .filter((n) => n)
+          : null;
+
+      const response = await fetch("/api/classes/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fromGrade: bulkFromGrade,
+          toGrade: bulkToGrade,
+          sectionsPerClass: bulkSectionsPerClass,
+          namingConvention: bulkNamingConvention,
+          customNames: customNamesList,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        if (data.created.classes > 0) {
+          toast.success(data.message);
+        } else {
+          toast.info(data.message);
+        }
+        setClassDialogOpen(false);
+        fetchClasses();
+      } else {
+        toast.error(data.error || "Failed to create classes");
+      }
+    } catch {
+      toast.error("Failed to create classes");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const openSectionDialog = (classId: string, section?: Section) => {
@@ -462,6 +706,10 @@ export default function ClassesPage() {
     );
   }
 
+  const teachingChangesCount = Array.from(teachingDraft.entries()).filter(
+    ([key, value]) => (teachingInitial.get(key) ?? null) !== value
+  ).length;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -562,6 +810,10 @@ export default function ClassesPage() {
                             <Plus className="mr-2 h-4 w-4" />
                             Add Section
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openTeachingAssignmentsDialog(cls)}>
+                            <LayoutGrid className="mr-2 h-4 w-4" />
+                            Teaching Assignments
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openClassDialog(cls)}>
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit Class
@@ -642,34 +894,212 @@ export default function ClassesPage() {
         )}
       </div>
 
-      {/* Class Dialog */}
+      {/* Class Dialog - with Tabs for Single/Bulk */}
       <Dialog open={classDialogOpen} onOpenChange={setClassDialogOpen}>
-        <DialogContent>
+        <DialogContent className={editingClass ? "" : "sm:max-w-[600px]"}>
           <DialogHeader>
-            <DialogTitle>{editingClass ? "Edit Class" : "Add New Class"}</DialogTitle>
+            <DialogTitle>{editingClass ? "Edit Class" : "Add Classes"}</DialogTitle>
             <DialogDescription>
-              {editingClass ? "Update the class name" : "Create a new class for your school"}
+              {editingClass
+                ? "Update the class name"
+                : "Create a single class or set up multiple classes at once"}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="className">Class Name</Label>
-              <Input
-                id="className"
-                placeholder="e.g., Grade 6, Class 10"
-                value={className}
-                onChange={(e) => setClassName(e.target.value)}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setClassDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSaveClass} disabled={isSaving}>
-              {isSaving ? "Saving..." : editingClass ? "Update" : "Create"}
-            </Button>
-          </DialogFooter>
+
+          {editingClass ? (
+            // Simple edit mode - no tabs
+            <>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="className">Class Name</Label>
+                  <Input
+                    id="className"
+                    placeholder="e.g., Grade 6, Class 10"
+                    value={className}
+                    onChange={(e) => setClassName(e.target.value)}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setClassDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveClass} disabled={isSaving}>
+                  {isSaving ? "Saving..." : "Update"}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            // Create mode - with tabs
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="single">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Single Class
+                </TabsTrigger>
+                <TabsTrigger value="bulk">
+                  <Layers className="mr-2 h-4 w-4" />
+                  Bulk Setup
+                </TabsTrigger>
+              </TabsList>
+
+              {/* Single Class Tab */}
+              <TabsContent value="single" className="mt-4">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="className">Class Name</Label>
+                    <Input
+                      id="className"
+                      placeholder="e.g., Grade 6, Class 10"
+                      value={className}
+                      onChange={(e) => setClassName(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <DialogFooter className="mt-6">
+                  <Button variant="outline" onClick={() => setClassDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleSaveClass} disabled={isSaving}>
+                    {isSaving ? "Creating..." : "Create"}
+                  </Button>
+                </DialogFooter>
+              </TabsContent>
+
+              {/* Bulk Setup Tab */}
+              <TabsContent value="bulk" className="mt-4">
+                <div className="space-y-4">
+                  {/* Class Range */}
+                  <div className="space-y-2">
+                    <Label>Class Range</Label>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={bulkFromGrade.toString()}
+                        onValueChange={(v) => setBulkFromGrade(parseInt(v))}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="From" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {GRADE_OPTIONS.map((grade) => (
+                            <SelectItem key={grade} value={grade.toString()}>
+                              Grade {grade}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <span className="text-muted-foreground">to</span>
+                      <Select
+                        value={bulkToGrade.toString()}
+                        onValueChange={(v) => setBulkToGrade(parseInt(v))}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="To" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {GRADE_OPTIONS.map((grade) => (
+                            <SelectItem key={grade} value={grade.toString()}>
+                              Grade {grade}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Sections per Class */}
+                  <div className="space-y-2">
+                    <Label>Sections per Class</Label>
+                    <Select
+                      value={bulkSectionsPerClass.toString()}
+                      onValueChange={(v) => setBulkSectionsPerClass(parseInt(v))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                          <SelectItem key={n} value={n.toString()}>
+                            {n} section{n > 1 ? "s" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Section Naming */}
+                  <div className="space-y-2">
+                    <Label>Section Naming</Label>
+                    <Select
+                      value={bulkNamingConvention}
+                      onValueChange={setBulkNamingConvention}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select naming convention" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="letters">Letters (A, B, C...)</SelectItem>
+                        <SelectItem value="colors">Colors (Blue, Green, Red...)</SelectItem>
+                        <SelectItem value="numbers">Numbers (1, 2, 3...)</SelectItem>
+                        <SelectItem value="roman">Roman (I, II, III...)</SelectItem>
+                        <SelectItem value="custom">Custom</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {bulkNamingConvention === "custom" && (
+                      <Input
+                        placeholder="Enter names separated by commas (e.g., Morning, Afternoon, Evening)"
+                        value={bulkCustomNames}
+                        onChange={(e) => setBulkCustomNames(e.target.value)}
+                        className="mt-2"
+                      />
+                    )}
+                  </div>
+
+                  {/* Preview */}
+                  <div className="space-y-2">
+                    <Label>Preview</Label>
+                    <div className="rounded-md border">
+                      <ScrollArea className="h-[200px]">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Class</TableHead>
+                              <TableHead>Sections</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {getBulkPreview().map((item) => (
+                              <TableRow key={item.name}>
+                                <TableCell className="font-medium">{item.name}</TableCell>
+                                <TableCell>{item.sections || "-"}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </ScrollArea>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      <Badge variant="secondary" className="mr-2">
+                        {bulkToGrade - bulkFromGrade + 1} classes
+                      </Badge>
+                      <Badge variant="secondary">
+                        {(bulkToGrade - bulkFromGrade + 1) * bulkSectionsPerClass} sections
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+
+                <DialogFooter className="mt-6">
+                  <Button variant="outline" onClick={() => setClassDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleBulkCreate} disabled={isSaving}>
+                    {isSaving ? "Creating..." : "Create All"}
+                  </Button>
+                </DialogFooter>
+              </TabsContent>
+            </Tabs>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -737,6 +1167,167 @@ export default function ClassesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Class-wide Teaching Assignments */}
+      <Dialog
+        open={teachingDialogOpen}
+        onOpenChange={(open) => {
+          setTeachingDialogOpen(open);
+          if (!open) {
+            setSelectedClassForTeaching(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-6xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Teaching Assignments</DialogTitle>
+            <DialogDescription>
+              {selectedClassForTeaching
+                ? `Set subject teachers across sections for ${selectedClassForTeaching.name}.`
+                : "Set subject teachers across sections."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {teachingLoading ? (
+            <div className="py-10 text-center text-muted-foreground">Loading...</div>
+          ) : teachingSections.length === 0 ? (
+            <div className="py-10 text-center text-muted-foreground">
+              This class has no sections. Add sections first.
+            </div>
+          ) : teachingSubjects.length === 0 ? (
+            <div className="py-10 text-center text-muted-foreground">
+              This class has no subjects. Add subjects first from the Subjects page.
+            </div>
+          ) : (
+            <div className="space-y-3 py-4">
+              <p className="text-sm text-muted-foreground">
+                Tip: use the &quot;Set all sections&quot; column to quickly assign the same teacher to A/B/C,
+                then override individual sections if needed.
+              </p>
+
+              <div className="rounded-md border overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[220px]">Subject</TableHead>
+                      <TableHead className="min-w-[240px]">Set all sections</TableHead>
+                      {teachingSections.map((section) => (
+                        <TableHead key={section.id} className="min-w-[220px]">
+                          {section.name}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {teachingSubjects.map((subject) => {
+                      const values = teachingSections.map((section) => {
+                        return teachingDraft.get(makeTeachingKey(section.id, subject.id)) ?? null;
+                      });
+                      const unique = new Set(values.map((v) => v ?? "__none__"));
+                      const rowValue =
+                        unique.size === 1 ? (values[0] ?? "__none__") : "__mixed__";
+
+                      return (
+                        <TableRow key={subject.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="h-3 w-3 rounded-full"
+                                style={{ backgroundColor: subject.color || "#6b7280" }}
+                              />
+                              <div>
+                                <div className="font-medium">{subject.name}</div>
+                                {subject.code && (
+                                  <div className="text-xs text-muted-foreground">
+                                    {subject.code}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Select
+                              value={rowValue}
+                              onValueChange={(value) => {
+                                if (value === "__mixed__") return;
+                                setTeachingSubjectAll(
+                                  subject.id,
+                                  value === "__none__" ? null : value
+                                );
+                              }}
+                              disabled={teachingSaving}
+                            >
+                              <SelectTrigger className="w-[220px]">
+                                <SelectValue placeholder="Set all sections" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__mixed__" disabled>
+                                  Mixed
+                                </SelectItem>
+                                <SelectItem value="__none__">Not assigned</SelectItem>
+                                {teachingTeachers.map((t) => (
+                                  <SelectItem key={t.id} value={t.id}>
+                                    {t.firstName} {t.lastName}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          {teachingSections.map((section) => {
+                            const key = makeTeachingKey(section.id, subject.id);
+                            const value = teachingDraft.get(key) ?? null;
+                            const isChanged = (teachingInitial.get(key) ?? null) !== value;
+
+                            return (
+                              <TableCell key={section.id}>
+                                <Select
+                                  value={value ?? "__none__"}
+                                  onValueChange={(v) =>
+                                    setTeachingCell(
+                                      section.id,
+                                      subject.id,
+                                      v === "__none__" ? null : v
+                                    )
+                                  }
+                                  disabled={teachingSaving}
+                                >
+                                  <SelectTrigger className={isChanged ? "border-primary" : ""}>
+                                    <SelectValue placeholder="Select teacher" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="__none__">Not assigned</SelectItem>
+                                    {teachingTeachers.map((t) => (
+                                      <SelectItem key={t.id} value={t.id}>
+                                        {t.firstName} {t.lastName}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTeachingDialogOpen(false)} disabled={teachingSaving}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveTeachingAssignments}
+              disabled={teachingSaving || teachingLoading || teachingSubjects.length === 0 || teachingSections.length === 0 || teachingChangesCount === 0}
+            >
+              {teachingSaving ? "Saving..." : `Save Changes${teachingChangesCount > 0 ? ` (${teachingChangesCount})` : ""}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Teacher Management Dialog */}
       <Dialog open={teacherDialogOpen} onOpenChange={setTeacherDialogOpen}>

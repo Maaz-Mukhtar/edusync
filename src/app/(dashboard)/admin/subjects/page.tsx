@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Plus,
+  Copy,
   Pencil,
   Trash2,
   BookOpen,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -56,6 +58,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
 interface Class {
@@ -64,6 +68,7 @@ interface Class {
   displayOrder: number;
   _count: {
     sections: number;
+    subjects: number;
   };
 }
 
@@ -103,6 +108,23 @@ const subjectColors = [
   { name: "Pink", value: "#ec4899" },
 ];
 
+function parseSubjectNames(input: string): string[] {
+  const parts = input
+    .split(/[\n,]+/g)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const name of parts) {
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(name);
+  }
+  return unique;
+}
+
 export default function SubjectsPage() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [selectedClass, setSelectedClass] = useState<Class | null>(null);
@@ -132,6 +154,22 @@ export default function SubjectsPage() {
   const [selectedSubjectForTeachers, setSelectedSubjectForTeachers] = useState<Subject | null>(null);
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>("");
   const [addingTeacher, setAddingTeacher] = useState(false);
+
+  // Bulk subjects states
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+
+  const [bulkSelectedClassIds, setBulkSelectedClassIds] = useState<Set<string>>(new Set());
+  const [bulkSubjectsText, setBulkSubjectsText] = useState("");
+  const [bulkMode, setBulkMode] = useState<"skipExisting" | "overwrite">("skipExisting");
+  const [bulkSaving, setBulkSaving] = useState(false);
+
+  const [copySourceClassId, setCopySourceClassId] = useState<string>("");
+  const [copyTargetClassIds, setCopyTargetClassIds] = useState<Set<string>>(new Set());
+  const [copyMode, setCopyMode] = useState<"skipExisting" | "overwrite">("skipExisting");
+  const [copyCode, setCopyCode] = useState(true);
+  const [copyColor, setCopyColor] = useState(true);
+  const [copySaving, setCopySaving] = useState(false);
 
   const fetchClasses = useCallback(async () => {
     setIsLoading(true);
@@ -204,6 +242,132 @@ export default function SubjectsPage() {
       fetchSubjects(selectedClass.id);
     }
   }, [selectedClass, fetchSubjects]);
+
+  const openBulkDialog = () => {
+    setBulkSelectedClassIds(new Set());
+    setBulkSubjectsText("");
+    setBulkMode("skipExisting");
+    setBulkDialogOpen(true);
+  };
+
+  const openCopyDialog = (sourceClassId?: string) => {
+    const sourceId = sourceClassId || "";
+    setCopySourceClassId(sourceId);
+    setCopyTargetClassIds(new Set());
+    setCopyMode("skipExisting");
+    setCopyCode(true);
+    setCopyColor(true);
+    setCopyDialogOpen(true);
+  };
+
+  const toggleBulkClass = (classId: string, checked: boolean) => {
+    setBulkSelectedClassIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(classId);
+      else next.delete(classId);
+      return next;
+    });
+  };
+
+  const toggleCopyTargetClass = (classId: string, checked: boolean) => {
+    setCopyTargetClassIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(classId);
+      else next.delete(classId);
+      return next;
+    });
+  };
+
+  const handleBulkApply = async () => {
+    const subjectNames = parseSubjectNames(bulkSubjectsText);
+
+    if (bulkSelectedClassIds.size === 0) {
+      toast.error("Select at least one class");
+      return;
+    }
+    if (subjectNames.length === 0) {
+      toast.error("Enter at least one subject");
+      return;
+    }
+
+    setBulkSaving(true);
+    try {
+      const response = await fetch("/api/subjects/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "apply",
+          classIds: Array.from(bulkSelectedClassIds),
+          subjects: subjectNames.map((name) => ({ name })),
+          mode: bulkMode,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        toast.error(data.error || "Failed to bulk add subjects");
+        return;
+      }
+
+      toast.success(
+        `Subjects processed: ${data.created} created, ${data.updated} updated, ${data.skipped} skipped`
+      );
+      setBulkDialogOpen(false);
+
+      if (selectedClass && bulkSelectedClassIds.has(selectedClass.id)) {
+        await fetchSubjects(selectedClass.id);
+      }
+    } catch {
+      toast.error("Failed to bulk add subjects");
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const handleCopySubjects = async () => {
+    if (!copySourceClassId) {
+      toast.error("Select a source class");
+      return;
+    }
+    if (copyTargetClassIds.size === 0) {
+      toast.error("Select at least one target class");
+      return;
+    }
+
+    setCopySaving(true);
+    try {
+      const response = await fetch("/api/subjects/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "copy",
+          sourceClassId: copySourceClassId,
+          targetClassIds: Array.from(copyTargetClassIds),
+          copyFields: { code: copyCode, color: copyColor },
+          mode: copyMode,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        toast.error(data.error || "Failed to copy subjects");
+        return;
+      }
+
+      toast.success(
+        `Subjects copied: ${data.created} created, ${data.updated} updated, ${data.skipped} skipped`
+      );
+      setCopyDialogOpen(false);
+
+      if (selectedClass && selectedClass.id === copySourceClassId) {
+        await fetchSubjects(selectedClass.id);
+      }
+    } catch {
+      toast.error("Failed to copy subjects");
+    } finally {
+      setCopySaving(false);
+    }
+  };
 
   const openTeacherDialog = async (subject: Subject) => {
     setSelectedSubjectForTeachers(subject);
@@ -365,6 +529,211 @@ export default function SubjectsPage() {
     }
   };
 
+  const bulkAndCopyDialogs = (
+    <>
+      {/* Bulk Add Subjects Dialog */}
+      <Dialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Bulk Add Subjects</DialogTitle>
+            <DialogDescription>
+              Create the same set of subjects across multiple classes (e.g., Grade 1–5).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Classes</Label>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <button
+                    type="button"
+                    className="hover:text-foreground"
+                    onClick={() => setBulkSelectedClassIds(new Set(classes.map((c) => c.id)))}
+                  >
+                    Select all
+                  </button>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    className="hover:text-foreground"
+                    onClick={() => setBulkSelectedClassIds(new Set())}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <ScrollArea className="h-40 rounded-md border p-3">
+                <div className="space-y-2">
+                  {classes.map((c) => (
+                    <label key={c.id} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={bulkSelectedClassIds.has(c.id)}
+                        onCheckedChange={(checked) => toggleBulkClass(c.id, checked === true)}
+                      />
+                      <span>{c.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </ScrollArea>
+              <p className="text-xs text-muted-foreground">
+                {bulkSelectedClassIds.size} class{bulkSelectedClassIds.size !== 1 ? "es" : ""} selected
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Subjects</Label>
+              <Textarea
+                value={bulkSubjectsText}
+                onChange={(e) => setBulkSubjectsText(e.target.value)}
+                placeholder={"Enter subjects (one per line or comma-separated)\nExample:\nEnglish\nMathematics\nScience"}
+                rows={6}
+              />
+              <p className="text-xs text-muted-foreground">
+                {parseSubjectNames(bulkSubjectsText).length} subject{parseSubjectNames(bulkSubjectsText).length !== 1 ? "s" : ""} detected
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Mode</Label>
+              <Select value={bulkMode} onValueChange={(v) => setBulkMode(v as "skipExisting" | "overwrite")}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="skipExisting">Skip existing</SelectItem>
+                  <SelectItem value="overwrite">Overwrite existing (only if fields provided)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDialogOpen(false)} disabled={bulkSaving}>
+              Cancel
+            </Button>
+            <Button onClick={handleBulkApply} disabled={bulkSaving}>
+              {bulkSaving ? "Applying..." : "Apply"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Copy Subjects Dialog */}
+      <Dialog open={copyDialogOpen} onOpenChange={setCopyDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Copy Subjects</DialogTitle>
+            <DialogDescription>
+              Copy subjects from one class to other classes (useful for fast setup).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Source Class</Label>
+              <Select
+                value={copySourceClassId}
+                onValueChange={(value) => {
+                  setCopySourceClassId(value);
+                  setCopyTargetClassIds(new Set());
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select source class" />
+                </SelectTrigger>
+                <SelectContent>
+                  {classes.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Target Classes</Label>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <button
+                    type="button"
+                    className="hover:text-foreground"
+                    onClick={() =>
+                      setCopyTargetClassIds(
+                        new Set(classes.map((c) => c.id).filter((id) => id !== copySourceClassId))
+                      )
+                    }
+                    disabled={!copySourceClassId}
+                  >
+                    Select all
+                  </button>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    className="hover:text-foreground"
+                    onClick={() => setCopyTargetClassIds(new Set())}
+                    disabled={!copySourceClassId}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <ScrollArea className="h-40 rounded-md border p-3">
+                <div className="space-y-2">
+                  {classes
+                    .filter((c) => c.id !== copySourceClassId)
+                    .map((c) => (
+                      <label key={c.id} className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={copyTargetClassIds.has(c.id)}
+                          onCheckedChange={(checked) => toggleCopyTargetClass(c.id, checked === true)}
+                          disabled={!copySourceClassId}
+                        />
+                        <span>{c.name}</span>
+                      </label>
+                    ))}
+                </div>
+              </ScrollArea>
+              <p className="text-xs text-muted-foreground">
+                {copyTargetClassIds.size} target{copyTargetClassIds.size !== 1 ? "s" : ""} selected
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={copyCode} onCheckedChange={(v) => setCopyCode(v === true)} />
+                <span>Copy codes</span>
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={copyColor} onCheckedChange={(v) => setCopyColor(v === true)} />
+                <span>Copy colors</span>
+              </label>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Mode</Label>
+              <Select value={copyMode} onValueChange={(v) => setCopyMode(v as "skipExisting" | "overwrite")}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="skipExisting">Skip existing</SelectItem>
+                  <SelectItem value="overwrite">Overwrite existing</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCopyDialogOpen(false)} disabled={copySaving}>
+              Cancel
+            </Button>
+            <Button onClick={handleCopySubjects} disabled={copySaving}>
+              {copySaving ? "Copying..." : "Copy"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -383,6 +752,16 @@ export default function SubjectsPage() {
             <p className="text-muted-foreground">
               Select a class to manage its subjects
             </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={openBulkDialog}>
+              <Plus className="mr-2 h-4 w-4" />
+              Bulk Add
+            </Button>
+            <Button variant="outline" onClick={() => openCopyDialog()}>
+              <Copy className="mr-2 h-4 w-4" />
+              Copy
+            </Button>
           </div>
         </div>
 
@@ -438,7 +817,8 @@ export default function SubjectsPage() {
                       <div>
                         <CardTitle className="text-lg">{classItem.name}</CardTitle>
                         <CardDescription>
-                          {classItem._count.sections} section{classItem._count.sections !== 1 ? "s" : ""}
+                          {classItem._count.sections} section{classItem._count.sections !== 1 ? "s" : ""} •{" "}
+                          {classItem._count.subjects} subject{classItem._count.subjects !== 1 ? "s" : ""}
                         </CardDescription>
                       </div>
                     </div>
@@ -449,6 +829,8 @@ export default function SubjectsPage() {
             ))}
           </div>
         )}
+
+        {bulkAndCopyDialogs}
       </div>
     );
   }
@@ -474,10 +856,16 @@ export default function SubjectsPage() {
             </p>
           </div>
         </div>
-        <Button onClick={() => openDialog()}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Subject
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => openCopyDialog(selectedClass.id)}>
+            <Copy className="mr-2 h-4 w-4" />
+            Copy to Other Classes
+          </Button>
+          <Button onClick={() => openDialog()}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Subject
+          </Button>
+        </div>
       </div>
 
       {/* Subjects Grid */}
@@ -734,6 +1122,8 @@ export default function SubjectsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {bulkAndCopyDialogs}
     </div>
   );
 }
