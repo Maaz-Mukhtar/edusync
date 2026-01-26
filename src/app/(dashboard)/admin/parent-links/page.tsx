@@ -51,60 +51,59 @@ import { toast } from "sonner";
 
 interface Parent {
   id: string;
-  userId: string;
-  occupation: string | null;
-  relationship: string | null;
-  user: {
+  email: string | null;
+  phone: string | null;
+  firstName: string;
+  lastName: string;
+  parentProfile: {
     id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    phone: string | null;
-  };
-  children: {
-    id: string;
-    student: {
+    occupation: string | null;
+    relationship: string | null;
+    children: {
       id: string;
-      user: {
-        firstName: string;
-        lastName: string;
-      };
-      section: {
-        name: string;
-        class: {
+      student: {
+        id: string;
+        user: {
+          firstName: string;
+          lastName: string;
+        };
+        section: {
           name: string;
+          class: {
+            name: string;
+          };
         };
       };
-    };
-  }[];
+    }[];
+  } | null;
 }
 
 interface Student {
   id: string;
-  userId: string;
-  rollNumber: string | null;
-  user: {
+  email: string | null;
+  phone: string | null;
+  firstName: string;
+  lastName: string;
+  studentProfile: {
     id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-  };
-  section: {
-    name: string;
-    class: {
+    rollNumber: string | null;
+    section: {
       name: string;
-    };
-  };
-  parents: {
-    id: string;
-    parent: {
-      id: string;
-      user: {
-        firstName: string;
-        lastName: string;
+      class: {
+        name: string;
       };
     };
-  }[];
+    parents: {
+      id: string;
+      parent: {
+        id: string;
+        user: {
+          firstName: string;
+          lastName: string;
+        };
+      };
+    }[];
+  } | null;
 }
 
 interface ParentStudentLink {
@@ -164,8 +163,8 @@ export default function ParentLinksPage() {
     try {
       const [linksRes, parentsRes, studentsRes] = await Promise.all([
         fetch("/api/parent-students"),
-        fetch("/api/parents"),
-        fetch("/api/students"),
+        fetch("/api/parents?limit=1000&sortBy=name&sortOrder=asc"),
+        fetch("/api/students?limit=1000&sortBy=name&sortOrder=asc"),
       ]);
 
       const [linksData, parentsData, studentsData] = await Promise.all([
@@ -174,9 +173,9 @@ export default function ParentLinksPage() {
         studentsRes.json(),
       ]);
 
-      if (linksRes.ok) setLinks(linksData.links);
-      if (parentsRes.ok) setParents(parentsData.parents);
-      if (studentsRes.ok) setStudents(studentsData.students);
+      if (linksRes.ok) setLinks(Array.isArray(linksData.links) ? linksData.links : []);
+      if (parentsRes.ok) setParents(Array.isArray(parentsData.parents) ? parentsData.parents : []);
+      if (studentsRes.ok) setStudents(Array.isArray(studentsData.students) ? studentsData.students : []);
     } catch {
       toast.error("Failed to fetch data");
     } finally {
@@ -260,9 +259,9 @@ export default function ParentLinksPage() {
   // Filter links based on search
   const filteredLinks = links.filter((link) => {
     const searchLower = searchTerm.toLowerCase();
-    const parentName = `${link.parent.user.firstName} ${link.parent.user.lastName}`.toLowerCase();
-    const studentName = `${link.student.user.firstName} ${link.student.user.lastName}`.toLowerCase();
-    const className = `${link.student.section.class.name} ${link.student.section.name}`.toLowerCase();
+    const parentName = `${link.parent?.user?.firstName ?? ""} ${link.parent?.user?.lastName ?? ""}`.toLowerCase();
+    const studentName = `${link.student?.user?.firstName ?? ""} ${link.student?.user?.lastName ?? ""}`.toLowerCase();
+    const className = `${link.student?.section?.class?.name ?? ""} ${link.student?.section?.name ?? ""}`.toLowerCase();
 
     return (
       parentName.includes(searchLower) ||
@@ -274,8 +273,11 @@ export default function ParentLinksPage() {
   // Get students that are not yet linked to the selected parent
   const availableStudentsForParent = students.filter((student) => {
     if (!selectedParent) return true;
-    return !student.parents.some((p) => p.parent.id === selectedParent);
+    return !student.studentProfile?.parents?.some((p) => p.parent.id === selectedParent);
   });
+
+  const parentsWithProfiles = parents.filter((p) => !!p.parentProfile);
+  const studentsWithProfiles = availableStudentsForParent.filter((s) => !!s.studentProfile);
 
   if (isLoading) {
     return (
@@ -379,10 +381,11 @@ export default function ParentLinksPage() {
                       </div>
                       <div>
                         <p className="font-medium">
-                          {link.parent.user.firstName} {link.parent.user.lastName}
+                          {link.parent?.user?.firstName ?? "Unknown"}{" "}
+                          {link.parent?.user?.lastName ?? "Parent"}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          {link.parent.user.email}
+                          {link.parent?.user?.email ?? ""}
                         </p>
                       </div>
                     </div>
@@ -399,11 +402,13 @@ export default function ParentLinksPage() {
                       </div>
                       <div>
                         <p className="font-medium">
-                          {link.student.user.firstName} {link.student.user.lastName}
+                          {link.student?.user?.firstName ?? "Unknown"}{" "}
+                          {link.student?.user?.lastName ?? "Student"}
                         </p>
                         <div className="flex items-center gap-2">
                           <Badge variant="secondary">
-                            {link.student.section.class.name} - {link.student.section.name}
+                            {link.student?.section?.class?.name ?? "Class"} -{" "}
+                            {link.student?.section?.name ?? "Section"}
                           </Badge>
                         </div>
                       </div>
@@ -442,9 +447,10 @@ export default function ParentLinksPage() {
                   <SelectValue placeholder="Choose a parent" />
                 </SelectTrigger>
                 <SelectContent>
-                  {parents.map((parent) => (
-                    <SelectItem key={parent.id} value={parent.id}>
-                      {parent.user.firstName} {parent.user.lastName} ({parent.user.email})
+                  {parentsWithProfiles.map((parent) => (
+                    <SelectItem key={parent.parentProfile!.id} value={parent.parentProfile!.id}>
+                      {parent.firstName} {parent.lastName}
+                      {parent.email ? ` (${parent.email})` : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -452,6 +458,11 @@ export default function ParentLinksPage() {
               {parents.length === 0 && (
                 <p className="text-sm text-muted-foreground">
                   No parents found. Create parent users first.
+                </p>
+              )}
+              {parents.length > 0 && parentsWithProfiles.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No valid parents found (missing parent profiles). Create parent users again or check your data.
                 </p>
               )}
             </div>
@@ -462,10 +473,10 @@ export default function ParentLinksPage() {
                   <SelectValue placeholder="Choose a student" />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableStudentsForParent.map((student) => (
-                    <SelectItem key={student.id} value={student.id}>
-                      {student.user.firstName} {student.user.lastName} (
-                      {student.section.class.name} - {student.section.name})
+                  {studentsWithProfiles.map((student) => (
+                    <SelectItem key={student.studentProfile!.id} value={student.studentProfile!.id}>
+                      {student.firstName} {student.lastName} (
+                      {student.studentProfile?.section.class.name} - {student.studentProfile?.section.name})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -473,6 +484,11 @@ export default function ParentLinksPage() {
               {students.length === 0 && (
                 <p className="text-sm text-muted-foreground">
                   No students found. Create student users first.
+                </p>
+              )}
+              {students.length > 0 && studentsWithProfiles.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No available students to link for this parent.
                 </p>
               )}
               {selectedParent && availableStudentsForParent.length === 0 && students.length > 0 && (
@@ -501,11 +517,11 @@ export default function ParentLinksPage() {
             <AlertDialogDescription>
               This will remove the relationship between{" "}
               <strong>
-                {deletingLink?.parent.user.firstName} {deletingLink?.parent.user.lastName}
+                {deletingLink?.parent?.user?.firstName ?? ""} {deletingLink?.parent?.user?.lastName ?? ""}
               </strong>{" "}
               and{" "}
               <strong>
-                {deletingLink?.student.user.firstName} {deletingLink?.student.user.lastName}
+                {deletingLink?.student?.user?.firstName ?? ""} {deletingLink?.student?.user?.lastName ?? ""}
               </strong>
               . This action cannot be undone.
             </AlertDialogDescription>
