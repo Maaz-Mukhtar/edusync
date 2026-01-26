@@ -277,7 +277,9 @@ export default function TeachersPage() {
             </Avatar>
             <div>
               <div className="font-medium">
-                {teacher.firstName} {teacher.lastName}
+                <Link href={`/admin/teachers/${teacher.id}`} className="hover:underline">
+                  {teacher.firstName} {teacher.lastName}
+                </Link>
               </div>
               <div className="text-sm text-muted-foreground">
                 {teacher.email || teacher.phone}

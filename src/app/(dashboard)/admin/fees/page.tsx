@@ -343,7 +343,15 @@ export default function FeesPage() {
                       <DollarSign className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <CardTitle className="text-lg">{structure.name}</CardTitle>
+                      <CardTitle className="text-lg">
+                        <button
+                          type="button"
+                          className="hover:underline underline-offset-4 text-left"
+                          onClick={() => openDialog(structure)}
+                        >
+                          {structure.name}
+                        </button>
+                      </CardTitle>
                       <CardDescription>
                         {structure.class ? structure.class.name : "All Classes"}
                       </CardDescription>

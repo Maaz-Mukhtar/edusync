@@ -783,18 +783,24 @@ export default function ClassesPage() {
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
-                    <CollapsibleTrigger asChild>
-                      <Button variant="ghost" className="p-0 hover:bg-transparent">
-                        <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" size="icon-sm" aria-label="Toggle sections">
                           {expandedClasses.has(cls.id) ? (
                             <ChevronDown className="h-4 w-4" />
                           ) : (
                             <ChevronRight className="h-4 w-4" />
                           )}
-                          <CardTitle className="text-lg">{cls.name}</CardTitle>
-                        </div>
-                      </Button>
-                    </CollapsibleTrigger>
+                        </Button>
+                      </CollapsibleTrigger>
+                      <button
+                        type="button"
+                        className="text-lg font-semibold hover:underline underline-offset-4"
+                        onClick={() => openClassDialog(cls)}
+                      >
+                        {cls.name}
+                      </button>
+                    </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="secondary">
                         {cls.sections.length} section{cls.sections.length !== 1 ? "s" : ""}
@@ -851,7 +857,14 @@ export default function ClassesPage() {
                           >
                             <div>
                               <div className="font-medium">
-                                {cls.name} - {section.name}
+                                <span className="text-muted-foreground">{cls.name} - </span>
+                                <button
+                                  type="button"
+                                  className="hover:underline underline-offset-4"
+                                  onClick={() => openSectionDialog(cls.id, section)}
+                                >
+                                  {section.name}
+                                </button>
                               </div>
                               <div className="text-sm text-muted-foreground">
                                 {section._count.students} student{section._count.students !== 1 ? "s" : ""}

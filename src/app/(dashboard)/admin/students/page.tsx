@@ -246,7 +246,9 @@ export default function StudentsPage() {
             </Avatar>
             <div>
               <div className="font-medium">
-                {student.firstName} {student.lastName}
+                <Link href={`/admin/students/${student.id}`} className="hover:underline">
+                  {student.firstName} {student.lastName}
+                </Link>
               </div>
               <div className="text-sm text-muted-foreground">
                 {student.email || student.phone}

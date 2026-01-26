@@ -369,7 +369,15 @@ export default function AcademicYearsPage() {
               <TableBody>
                 {academicYears.map((year) => (
                   <TableRow key={year.id}>
-                    <TableCell className="font-medium">{year.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <button
+                        type="button"
+                        className="hover:underline underline-offset-4 text-left"
+                        onClick={() => openEditDialog(year)}
+                      >
+                        {year.name}
+                      </button>
+                    </TableCell>
                     <TableCell>
                       {format(new Date(year.startDate), "MMM d, yyyy")}
                     </TableCell>

@@ -419,7 +419,14 @@ export default function AssessmentsTab({ initialData }: AssessmentsTabProps) {
               <TableBody>
                 {filteredAssessments.map((assessment) => (
                   <TableRow key={assessment.id}>
-                    <TableCell className="font-medium">{assessment.title}</TableCell>
+                    <TableCell className="font-medium">
+                      <Link
+                        href={`/teacher/assessments/${assessment.id}`}
+                        className="hover:underline"
+                      >
+                        {assessment.title}
+                      </Link>
+                    </TableCell>
                     <TableCell>{assessment.section.name}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
