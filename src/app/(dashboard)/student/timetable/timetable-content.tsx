@@ -39,6 +39,9 @@ export default function TimetableContent({ data }: TimetableContentProps) {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Timetable</h1>
         <p className="text-muted-foreground">
+          {data.academicYearName && data.termName
+            ? `${data.academicYearName} • ${data.termName} • `
+            : ""}
           {data.className} - {data.sectionName} weekly schedule
         </p>
       </div>

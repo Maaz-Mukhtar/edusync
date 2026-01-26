@@ -48,6 +48,7 @@ const adminNavItems: NavItem[] = [
   { title: "Administrators", href: "/admin/users", icon: Shield },
   { title: "Classes", href: "/admin/classes", icon: School },
   { title: "Subjects", href: "/admin/subjects", icon: BookOpen },
+  { title: "Timetable", href: "/admin/timetable", icon: Clock },
   { title: "Assignments", href: "/admin/assignments", icon: Grid3X3 },
   { title: "Parent Links", href: "/admin/parent-links", icon: Link2 },
   { title: "Attendance", href: "/admin/attendance", icon: CheckSquare },
@@ -62,6 +63,7 @@ const teacherNavItems: NavItem[] = [
   { title: "Dashboard", href: "/teacher", icon: LayoutDashboard },
   { title: "Analytics", href: "/teacher/analytics", icon: TrendingUp },
   { title: "My Classes", href: "/teacher/classes", icon: School },
+  { title: "Timetable", href: "/teacher/timetable", icon: Clock },
   { title: "Attendance", href: "/teacher/attendance", icon: CheckSquare },
   { title: "Gradebook", href: "/teacher/gradebook", icon: ClipboardList },
   { title: "Assessments", href: "/teacher/assessments", icon: FileText },
@@ -85,6 +87,7 @@ const studentNavItems: NavItem[] = [
 
 const parentNavItems: NavItem[] = [
   { title: "Dashboard", href: "/parent", icon: LayoutDashboard },
+  { title: "Timetable", href: "/parent/timetable", icon: Clock },
   { title: "Attendance", href: "/parent/attendance", icon: CheckSquare },
   { title: "Grades", href: "/parent/grades", icon: GraduationCap },
   { title: "Fees", href: "/parent/fees", icon: DollarSign },

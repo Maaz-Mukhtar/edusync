@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { unstable_cache } from "next/cache";
+import { getCurrentTermForSchool } from "@/lib/data/current-term";
 
 // Cache configuration
 const CACHE_REVALIDATE_SECONDS = 60;
@@ -87,23 +88,18 @@ async function fetchDashboardDataInternal(
   const dayOfWeek = today.getDay();
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
-  // Run all queries in parallel
-  const [
-    sectionInfo,
-    attendances,
-    todaySchedule,
-    recentResults,
-    announcements,
-  ] = await Promise.all([
-    // Get section and class info
-    prisma.section.findUnique({
-      where: { id: sectionId },
-      include: {
-        class: true,
-      },
-    }),
+  // Section + class (needed to resolve current term)
+  const sectionInfo = await prisma.section.findUnique({
+    where: { id: sectionId },
+    include: { class: true },
+  });
 
-    // Get attendance for current month
+  const currentTerm = sectionInfo?.class?.schoolId
+    ? await getCurrentTermForSchool(sectionInfo.class.schoolId)
+    : null;
+
+  // Run remaining queries in parallel
+  const [attendances, todaySchedule, recentResults, announcements] = await Promise.all([
     prisma.attendance.findMany({
       where: {
         studentId,
@@ -111,20 +107,18 @@ async function fetchDashboardDataInternal(
       },
       select: { status: true },
     }),
+    currentTerm
+      ? prisma.timetableSlot.findMany({
+          where: {
+            sectionId,
+            dayOfWeek,
+            timetable: { termId: currentTerm.termId, status: "PUBLISHED" },
+          },
+          include: { subject: true },
+          orderBy: { startTime: "asc" },
+        })
+      : Promise.resolve([]),
 
-    // Get today's schedule
-    prisma.timetableSlot.findMany({
-      where: {
-        sectionId,
-        dayOfWeek,
-      },
-      include: {
-        subject: true,
-      },
-      orderBy: { startTime: "asc" },
-    }),
-
-    // Get recent assessment results
     prisma.assessmentResult.findMany({
       where: { studentId },
       include: {
@@ -138,7 +132,6 @@ async function fetchDashboardDataInternal(
       take: 5,
     }),
 
-    // Get recent announcements for the school
     prisma.announcement.findMany({
       where: {
         OR: [
@@ -234,6 +227,8 @@ export interface TimetableSlot {
 }
 
 export interface TimetableData {
+  academicYearName: string | null;
+  termName: string | null;
   className: string;
   sectionName: string;
   slots: TimetableSlot[];
@@ -241,43 +236,31 @@ export interface TimetableData {
 
 // Internal function to fetch timetable data (cacheable)
 async function fetchTimetableDataInternal(sectionId: string): Promise<TimetableData> {
-  const [section, slots] = await Promise.all([
-    prisma.section.findUnique({
-      where: { id: sectionId },
-      include: { class: true },
-    }),
-    prisma.timetableSlot.findMany({
-      where: { sectionId },
-      include: {
-        subject: true,
-      },
-      orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
-    }),
-  ]);
+  const section = await prisma.section.findUnique({
+    where: { id: sectionId },
+    include: { class: true },
+  });
 
-  // Get teacher info for slots that have a teacherId
-  const teacherIds = [...new Set(slots.filter(s => s.teacherId).map(s => s.teacherId as string))];
-  const teachers = teacherIds.length > 0
-    ? await prisma.teacherProfile.findMany({
-        where: { id: { in: teacherIds } },
+  const currentTerm = section?.class?.schoolId ? await getCurrentTermForSchool(section.class.schoolId) : null;
+
+  const slots = currentTerm
+    ? await prisma.timetableSlot.findMany({
+        where: { sectionId, timetable: { termId: currentTerm.termId, status: "PUBLISHED" } },
         include: {
-          user: {
-            select: {
-              firstName: true,
-              lastName: true,
-            },
-          },
+          subject: true,
+          teacher: { include: { user: { select: { firstName: true, lastName: true } } } },
         },
+        orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
       })
     : [];
 
-  const teacherMap = new Map(teachers.map(t => [t.id, t]));
-
   return {
+    academicYearName: currentTerm?.academicYearName ?? null,
+    termName: currentTerm?.termName ?? null,
     className: section?.class.name || "N/A",
     sectionName: section?.name || "N/A",
     slots: slots.map((slot) => {
-      const teacher = slot.teacherId ? teacherMap.get(slot.teacherId) : null;
+      const teacher = slot.teacher;
       return {
         id: slot.id,
         dayOfWeek: slot.dayOfWeek,

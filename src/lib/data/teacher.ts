@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { startOfLocalDay, toDateInputValue } from "@/lib/date";
+import { getCurrentTermForSchool } from "@/lib/data/current-term";
 import { redirect } from "next/navigation";
 import { unstable_cache } from "next/cache";
 
@@ -66,10 +67,11 @@ export async function getTeacherProfile() {
 }
 
 // Internal function to fetch dashboard data (cacheable)
-async function fetchDashboardDataInternal(teacherId: string): Promise<DashboardData> {
+async function fetchDashboardDataInternal(teacherId: string, schoolId: string): Promise<DashboardData> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const dayOfWeek = today.getDay();
+  const currentTerm = await getCurrentTermForSchool(schoolId);
 
   // Get sections where teacher is class teacher
   const classTeacherSections = await prisma.sectionTeacher.findMany({
@@ -97,21 +99,20 @@ async function fetchDashboardDataInternal(teacherId: string): Promise<DashboardD
     totalStudents,
   ] = await Promise.all([
     // Get today's schedule for teacher's sections
-    prisma.timetableSlot.findMany({
-      where: {
-        sectionId: { in: allSectionIds },
-        dayOfWeek,
-      },
-      include: {
-        section: {
-          include: {
-            class: true,
+    currentTerm
+      ? prisma.timetableSlot.findMany({
+          where: {
+            sectionId: { in: allSectionIds },
+            dayOfWeek,
+            timetable: { termId: currentTerm.termId, status: "PUBLISHED" },
           },
-        },
-        subject: true,
-      },
-      orderBy: { startTime: "asc" },
-    }),
+          include: {
+            section: { include: { class: true } },
+            subject: true,
+          },
+          orderBy: { startTime: "asc" },
+        })
+      : Promise.resolve([]),
 
     // Get sections without attendance today
     prisma.section.findMany({
@@ -201,9 +202,9 @@ async function fetchDashboardDataInternal(teacherId: string): Promise<DashboardD
 }
 
 // Cached version of dashboard data fetch
-const getCachedDashboardData = (teacherId: string) =>
+const getCachedDashboardData = (teacherId: string, schoolId: string) =>
   unstable_cache(
-    () => fetchDashboardDataInternal(teacherId),
+    () => fetchDashboardDataInternal(teacherId, schoolId),
     [`teacher-dashboard-${teacherId}`],
     {
       revalidate: CACHE_REVALIDATE_SECONDS,
@@ -214,7 +215,9 @@ const getCachedDashboardData = (teacherId: string) =>
 // Public function to get dashboard data
 export async function getTeacherDashboardData(): Promise<DashboardData> {
   const teacherProfile = await getTeacherProfile();
-  return getCachedDashboardData(teacherProfile.id);
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+  return getCachedDashboardData(teacherProfile.id, session.user.schoolId);
 }
 
 // Classes data types
@@ -1239,4 +1242,72 @@ export async function getCombinedAssessmentsData(): Promise<CombinedAssessmentsD
     assessments,
     onlineTests,
   };
+}
+
+// ============================================
+// TIMETABLE DATA
+// ============================================
+
+export interface TeacherTimetableSlot {
+  id: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  room: string | null;
+  section: string;
+  subject: string;
+  subjectColor: string | null;
+}
+
+export interface TeacherTimetableData {
+  academicYearName: string | null;
+  termName: string | null;
+  slots: TeacherTimetableSlot[];
+}
+
+async function fetchTeacherTimetableDataInternal(teacherId: string, schoolId: string): Promise<TeacherTimetableData> {
+  const currentTerm = await getCurrentTermForSchool(schoolId);
+  if (!currentTerm) return { academicYearName: null, termName: null, slots: [] };
+
+  const slots = await prisma.timetableSlot.findMany({
+    where: {
+      teacherId,
+      dayOfWeek: { in: [1, 2, 3, 4, 5] },
+      timetable: { termId: currentTerm.termId, status: "PUBLISHED" },
+    },
+    include: {
+      section: { include: { class: true } },
+      subject: true,
+    },
+    orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
+  });
+
+  return {
+    academicYearName: currentTerm.academicYearName,
+    termName: currentTerm.termName,
+    slots: slots.map((s) => ({
+      id: s.id,
+      dayOfWeek: s.dayOfWeek,
+      startTime: s.startTime,
+      endTime: s.endTime,
+      room: s.room,
+      section: `${s.section.class.name} - ${s.section.name}`,
+      subject: s.subject.name,
+      subjectColor: s.subject.color,
+    })),
+  };
+}
+
+const getCachedTeacherTimetableData = (teacherId: string, schoolId: string) =>
+  unstable_cache(
+    () => fetchTeacherTimetableDataInternal(teacherId, schoolId),
+    [`teacher-timetable-${teacherId}`],
+    { revalidate: 300, tags: [`teacher-${teacherId}`, "teacher-timetable"] }
+  )();
+
+export async function getTeacherTimetableData(): Promise<TeacherTimetableData> {
+  const teacherProfile = await getTeacherProfile();
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+  return getCachedTeacherTimetableData(teacherProfile.id, session.user.schoolId);
 }
