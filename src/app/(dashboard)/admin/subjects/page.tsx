@@ -903,15 +903,7 @@ export default function SubjectsPage() {
                       <BookOpen className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                      <CardTitle className="text-lg">
-                        <button
-                          type="button"
-                          className="hover:underline underline-offset-4 text-left"
-                          onClick={() => openDialog(subject)}
-                        >
-                          {subject.name}
-                        </button>
-                      </CardTitle>
+                      <CardTitle className="text-lg">{subject.name}</CardTitle>
                       {subject.code && (
                         <CardDescription>{subject.code}</CardDescription>
                       )}
