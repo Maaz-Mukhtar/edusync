@@ -6,9 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { TrendingUp, Users, BookOpen, ListChecks, ExternalLink } from "lucide-react";
+import { TrendingUp, Users, BookOpen, ListChecks, ExternalLink, CheckSquare } from "lucide-react";
 
 type SectionRow = {
   sectionId: string;
@@ -48,9 +49,56 @@ type SectionDetailResponse = {
   }>;
 };
 
+type AttendanceSectionRow = {
+  sectionId: string;
+  sectionName: string;
+  classId: string;
+  className: string;
+  studentCount: number;
+  totalMarked: number;
+  presentCount: number;
+  absentCount: number;
+  lateCount: number;
+  excusedCount: number;
+};
+
+type AttendanceSectionDetailResponse = {
+  filters: { academicYearId: string | null; termId: string | null; from: string; to: string };
+  section: {
+    id: string;
+    name: string;
+    class: { id: string; name: string };
+    studentCount: number;
+  };
+  overall: {
+    totalMarked: number;
+    presentCount: number;
+    absentCount: number;
+    lateCount: number;
+    excusedCount: number;
+  };
+  studentStats: Array<{
+    studentProfileId: string;
+    studentUserId: string;
+    firstName: string;
+    lastName: string;
+    rollNumber: string | null;
+    totalMarked: number;
+    presentCount: number;
+    absentCount: number;
+    lateCount: number;
+    excusedCount: number;
+  }>;
+};
+
 function formatPercent(value: number | null) {
   if (value === null || !Number.isFinite(value)) return "-";
   return `${value.toFixed(1)}%`;
+}
+
+function safeRate(numerator: number, denominator: number) {
+  if (!denominator) return null;
+  return (numerator / denominator) * 100;
 }
 
 export function PerformanceDashboard({
@@ -75,6 +123,7 @@ export function PerformanceDashboard({
 
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<string>("");
   const [selectedTermId, setSelectedTermId] = useState<string>("all");
+  const [activeTab, setActiveTab] = useState<"performance" | "attendance">("performance");
 
   const fetchSections = useCallback(async () => {
     setIsLoadingSections(true);
@@ -101,6 +150,62 @@ export function PerformanceDashboard({
       setIsLoadingSections(false);
     }
   }, [selectedAcademicYearId, selectedTermId, selectedClassId]);
+
+  const [attendanceSections, setAttendanceSections] = useState<AttendanceSectionRow[]>([]);
+  const [selectedAttendanceSectionId, setSelectedAttendanceSectionId] = useState<string>("");
+  const [attendanceDetail, setAttendanceDetail] = useState<AttendanceSectionDetailResponse | null>(null);
+  const [isLoadingAttendanceSections, setIsLoadingAttendanceSections] = useState(false);
+  const [isLoadingAttendanceDetail, setIsLoadingAttendanceDetail] = useState(false);
+
+  const fetchAttendanceSections = useCallback(async () => {
+    setIsLoadingAttendanceSections(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedAcademicYearId) params.set("academicYearId", selectedAcademicYearId);
+      if (selectedTermId) params.set("termId", selectedTermId);
+      if (selectedClassId !== "all") params.set("classId", selectedClassId);
+      const response = await fetch(`/api/analytics/attendance/sections?${params.toString()}`);
+      const data = await response.json();
+      if (!response.ok) {
+        toast.error(data.error || "Failed to load attendance analytics");
+        setAttendanceSections([]);
+        return;
+      }
+      setAttendanceSections(data.sections || []);
+    } catch {
+      toast.error("Failed to load attendance analytics");
+      setAttendanceSections([]);
+    } finally {
+      setIsLoadingAttendanceSections(false);
+    }
+  }, [selectedAcademicYearId, selectedTermId, selectedClassId]);
+
+  const fetchAttendanceDetail = useCallback(
+    async (sectionId: string) => {
+      setIsLoadingAttendanceDetail(true);
+      try {
+        const params = new URLSearchParams();
+        if (selectedAcademicYearId) params.set("academicYearId", selectedAcademicYearId);
+        if (selectedTermId) params.set("termId", selectedTermId);
+        const response = await fetch(
+          `/api/analytics/attendance/sections/${sectionId}?${params.toString()}`
+        );
+        const data = await response.json();
+        if (!response.ok) {
+          toast.error(data.error || "Failed to load section attendance");
+          setAttendanceDetail(null);
+          return;
+        }
+        setAttendanceDetail(data);
+      } catch {
+        toast.error("Failed to load section attendance");
+        setAttendanceDetail(null);
+      } finally {
+        setIsLoadingAttendanceDetail(false);
+      }
+    },
+    [selectedAcademicYearId, selectedTermId]
+  );
 
   const fetchAcademicYears = useCallback(async () => {
     setIsLoadingPeriods(true);
@@ -169,6 +274,11 @@ export function PerformanceDashboard({
   }, [selectedAcademicYearId, selectedClassId, selectedTermId, fetchSections]);
 
   useEffect(() => {
+    if (!selectedAcademicYearId) return;
+    fetchAttendanceSections();
+  }, [selectedAcademicYearId, selectedClassId, selectedTermId, fetchAttendanceSections]);
+
+  useEffect(() => {
     if (!selectedSectionId) {
       setSectionDetail(null);
       return;
@@ -180,6 +290,18 @@ export function PerformanceDashboard({
       setSectionDetail(null);
     }
   }, [sections, selectedSectionId]);
+
+  useEffect(() => {
+    if (!selectedAttendanceSectionId) {
+      setAttendanceDetail(null);
+      return;
+    }
+    const exists = attendanceSections.some((s) => s.sectionId === selectedAttendanceSectionId);
+    if (!exists) {
+      setSelectedAttendanceSectionId("");
+      setAttendanceDetail(null);
+    }
+  }, [attendanceSections, selectedAttendanceSectionId]);
 
   const fetchSectionDetail = useCallback(async (sectionId: string) => {
     setIsLoadingDetail(true);
@@ -209,6 +331,11 @@ export function PerformanceDashboard({
     if (!selectedSectionId) return;
     fetchSectionDetail(selectedSectionId);
   }, [selectedSectionId, selectedAcademicYearId, selectedTermId, fetchSectionDetail]);
+
+  useEffect(() => {
+    if (!selectedAttendanceSectionId) return;
+    fetchAttendanceDetail(selectedAttendanceSectionId);
+  }, [selectedAttendanceSectionId, selectedAcademicYearId, selectedTermId, fetchAttendanceDetail]);
 
   const headerTitle = role === "admin" ? "Analytics" : "My Analytics";
   const headerDescription =
@@ -293,194 +420,375 @@ export function PerformanceDashboard({
             </Select>
           </div>
 
-          <Button variant="outline" onClick={fetchSections} disabled={isLoadingSections}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              fetchSections();
+              fetchAttendanceSections();
+            }}
+            disabled={isLoadingSections || isLoadingAttendanceSections}
+          >
             Refresh
           </Button>
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Sections
-            </CardTitle>
-            <CardDescription>Average scores by section (percent).</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoadingSections ? (
-              <div className="text-sm text-muted-foreground">Loading…</div>
-            ) : sections.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No sections found for this filter.</div>
-            ) : (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Section</TableHead>
-                      <TableHead className="text-right">Avg</TableHead>
-                      <TableHead className="text-right">Results</TableHead>
-                      <TableHead className="w-[110px]"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sections.map((s) => {
-                      const isSelected = selectedSectionId === s.sectionId;
-                      return (
-                        <TableRow key={s.sectionId} data-state={isSelected ? "selected" : undefined}>
-                          <TableCell>
-                            <div className="font-medium">{s.className} - {s.sectionName}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {s.studentCount} students • {s.assessmentCount} assessments
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Badge variant={s.avgPercent === null ? "secondary" : "default"}>
-                              {formatPercent(s.avgPercent)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">{s.resultCount}</TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant={isSelected ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => setSelectedSectionId(s.sectionId)}
-                            >
-                              View
-                            </Button>
-                          </TableCell>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "performance" | "attendance")}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="performance">Performance</TabsTrigger>
+          <TabsTrigger value="attendance">Attendance</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="performance">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Sections
+                </CardTitle>
+                <CardDescription>Average scores by section (percent).</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isLoadingSections ? (
+                  <div className="text-sm text-muted-foreground">Loading…</div>
+                ) : sections.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No sections found for this filter.</div>
+                ) : (
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Section</TableHead>
+                          <TableHead className="text-right">Avg</TableHead>
+                          <TableHead className="text-right">Results</TableHead>
+                          <TableHead className="w-[110px]"></TableHead>
                         </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BookOpen className="h-5 w-5" />
-              Section Detail
-            </CardTitle>
-            <CardDescription>
-              Subject breakdown and student averages for the selected section.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {!selectedSectionId ? (
-              <div className="text-sm text-muted-foreground">
-                Select a section to view detailed analytics.
-              </div>
-            ) : isLoadingDetail ? (
-              <div className="text-sm text-muted-foreground">Loading section analytics…</div>
-            ) : !sectionDetail ? (
-              <div className="text-sm text-muted-foreground">No details available.</div>
-            ) : (
-              <>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="font-medium">
-                      {sectionDetail.section.class.name} - {sectionDetail.section.name}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {sectionDetail.section.studentCount} students • {sectionDetail.overall.assessmentCount} assessments • {sectionDetail.overall.resultCount} results
-                    </div>
-                  </div>
-                  <Badge variant={sectionDetail.overall.avgPercent === null ? "secondary" : "default"}>
-                    Overall {formatPercent(sectionDetail.overall.avgPercent)}
-                  </Badge>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="text-sm font-medium flex items-center gap-2">
-                    <BookOpen className="h-4 w-4" />
-                    Subjects
-                  </div>
-                  {sectionDetail.subjectStats.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">No subject results for this range.</div>
-                  ) : (
-                    <div className="rounded-md border">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Subject</TableHead>
-                            <TableHead className="text-right">Avg</TableHead>
-                            <TableHead className="text-right">Results</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {sectionDetail.subjectStats.map((sub) => (
-                            <TableRow key={sub.subjectId}>
+                      </TableHeader>
+                      <TableBody>
+                        {sections.map((s) => {
+                          const isSelected = selectedSectionId === s.sectionId;
+                          return (
+                            <TableRow key={s.sectionId} data-state={isSelected ? "selected" : undefined}>
                               <TableCell>
-                                <div className="font-medium">{sub.subjectName}</div>
-                                <div className="text-xs text-muted-foreground">{sub.assessmentCount} assessments</div>
+                                <div className="font-medium">{s.className} - {s.sectionName}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {s.studentCount} students • {s.assessmentCount} assessments
+                                </div>
                               </TableCell>
-                              <TableCell className="text-right">{formatPercent(sub.avgPercent)}</TableCell>
-                              <TableCell className="text-right">{sub.resultCount}</TableCell>
+                              <TableCell className="text-right">
+                                <Badge variant={s.avgPercent === null ? "secondary" : "default"}>
+                                  {formatPercent(s.avgPercent)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">{s.resultCount}</TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  variant={isSelected ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => setSelectedSectionId(s.sectionId)}
+                                >
+                                  View
+                                </Button>
+                              </TableCell>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <div className="text-sm font-medium flex items-center gap-2">
-                    <ListChecks className="h-4 w-4" />
-                    Students
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
                   </div>
-                  {sectionDetail.studentStats.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">No students found.</div>
-                  ) : (
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5" />
+                  Section Detail
+                </CardTitle>
+                <CardDescription>
+                  Subject breakdown and student averages for the selected section.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {!selectedSectionId ? (
+                  <div className="text-sm text-muted-foreground">
+                    Select a section to view detailed analytics.
+                  </div>
+                ) : isLoadingDetail ? (
+                  <div className="text-sm text-muted-foreground">Loading section analytics…</div>
+                ) : !sectionDetail ? (
+                  <div className="text-sm text-muted-foreground">No details available.</div>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="font-medium">
+                          {sectionDetail.section.class.name} - {sectionDetail.section.name}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {sectionDetail.section.studentCount} students • {sectionDetail.overall.assessmentCount} assessments • {sectionDetail.overall.resultCount} results
+                        </div>
+                      </div>
+                      <Badge variant={sectionDetail.overall.avgPercent === null ? "secondary" : "default"}>
+                        Overall {formatPercent(sectionDetail.overall.avgPercent)}
+                      </Badge>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium flex items-center gap-2">
+                        <BookOpen className="h-4 w-4" />
+                        Subjects
+                      </div>
+                      {sectionDetail.subjectStats.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">No subject results for this range.</div>
+                      ) : (
+                        <div className="rounded-md border">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Subject</TableHead>
+                                <TableHead className="text-right">Avg</TableHead>
+                                <TableHead className="text-right">Results</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {sectionDetail.subjectStats.map((sub) => (
+                                <TableRow key={sub.subjectId}>
+                                  <TableCell>
+                                    <div className="font-medium">{sub.subjectName}</div>
+                                    <div className="text-xs text-muted-foreground">{sub.assessmentCount} assessments</div>
+                                  </TableCell>
+                                  <TableCell className="text-right">{formatPercent(sub.avgPercent)}</TableCell>
+                                  <TableCell className="text-right">{sub.resultCount}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium flex items-center gap-2">
+                        <ListChecks className="h-4 w-4" />
+                        Students
+                      </div>
+                      {sectionDetail.studentStats.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">No students found.</div>
+                      ) : (
+                        <div className="rounded-md border">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Student</TableHead>
+                                <TableHead className="text-right">Avg</TableHead>
+                                <TableHead className="text-right">Results</TableHead>
+                                <TableHead className="w-[110px]"></TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {sectionDetail.studentStats.map((st) => (
+                                <TableRow key={st.studentProfileId}>
+                                  <TableCell>
+                                    <div className="font-medium">
+                                      {st.rollNumber ? `${st.rollNumber} • ` : ""}
+                                      {st.firstName} {st.lastName}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-right">{formatPercent(st.avgPercent)}</TableCell>
+                                  <TableCell className="text-right">{st.resultCount}</TableCell>
+                                  <TableCell className="text-right">
+                                    {role === "admin" ? (
+                                      <Button asChild size="sm" variant="outline">
+                                        <Link href={`/admin/students/${st.studentUserId}`}>
+                                          Open <ExternalLink className="h-3.5 w-3.5" />
+                                        </Link>
+                                      </Button>
+                                    ) : (
+                                      <span className="text-xs text-muted-foreground">—</span>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="attendance">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CheckSquare className="h-5 w-5" />
+                  Sections
+                </CardTitle>
+                <CardDescription>Attendance summary by section.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isLoadingAttendanceSections ? (
+                  <div className="text-sm text-muted-foreground">Loading…</div>
+                ) : attendanceSections.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No sections found for this filter.</div>
+                ) : (
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Section</TableHead>
+                          <TableHead className="text-right">Present</TableHead>
+                          <TableHead className="text-right">Absent</TableHead>
+                          <TableHead className="text-right">Rate</TableHead>
+                          <TableHead className="w-[110px]"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {attendanceSections.map((s) => {
+                          const isSelected = selectedAttendanceSectionId === s.sectionId;
+                          const presentLike = s.presentCount + s.lateCount + s.excusedCount;
+                          const rate = safeRate(presentLike, s.totalMarked);
+                          return (
+                            <TableRow key={s.sectionId} data-state={isSelected ? "selected" : undefined}>
+                              <TableCell>
+                                <div className="font-medium">{s.className} - {s.sectionName}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {s.studentCount} students • {s.totalMarked} marked
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {s.presentCount + s.lateCount + s.excusedCount}
+                              </TableCell>
+                              <TableCell className="text-right">{s.absentCount}</TableCell>
+                              <TableCell className="text-right">
+                                <Badge variant={rate === null ? "secondary" : "default"}>
+                                  {rate === null ? "-" : `${rate.toFixed(1)}%`}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  variant={isSelected ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => setSelectedAttendanceSectionId(s.sectionId)}
+                                >
+                                  View
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CheckSquare className="h-5 w-5" />
+                  Section Detail
+                </CardTitle>
+                <CardDescription>Student-level attendance breakdown.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {!selectedAttendanceSectionId ? (
+                  <div className="text-sm text-muted-foreground">
+                    Select a section to view detailed attendance.
+                  </div>
+                ) : isLoadingAttendanceDetail ? (
+                  <div className="text-sm text-muted-foreground">Loading section attendance…</div>
+                ) : !attendanceDetail ? (
+                  <div className="text-sm text-muted-foreground">No details available.</div>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="font-medium">
+                          {attendanceDetail.section.class.name} - {attendanceDetail.section.name}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {attendanceDetail.section.studentCount} students • {attendanceDetail.overall.totalMarked} marked
+                        </div>
+                      </div>
+                      <Badge
+                        variant={
+                          attendanceDetail.overall.totalMarked === 0 ? "secondary" : "default"
+                        }
+                      >
+                        Rate{" "}
+                        {(() => {
+                          const presentLike =
+                            attendanceDetail.overall.presentCount +
+                            attendanceDetail.overall.lateCount +
+                            attendanceDetail.overall.excusedCount;
+                          const rate = safeRate(presentLike, attendanceDetail.overall.totalMarked);
+                          return rate === null ? "-" : `${rate.toFixed(1)}%`;
+                        })()}
+                      </Badge>
+                    </div>
+
                     <div className="rounded-md border">
                       <Table>
                         <TableHeader>
                           <TableRow>
                             <TableHead>Student</TableHead>
-                            <TableHead className="text-right">Avg</TableHead>
-                            <TableHead className="text-right">Results</TableHead>
+                            <TableHead className="text-right">Present</TableHead>
+                            <TableHead className="text-right">Absent</TableHead>
+                            <TableHead className="text-right">Rate</TableHead>
                             <TableHead className="w-[110px]"></TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {sectionDetail.studentStats.map((st) => (
-                            <TableRow key={st.studentProfileId}>
-                              <TableCell>
-                                <div className="font-medium">
-                                  {st.rollNumber ? `${st.rollNumber} • ` : ""}
-                                  {st.firstName} {st.lastName}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-right">{formatPercent(st.avgPercent)}</TableCell>
-                              <TableCell className="text-right">{st.resultCount}</TableCell>
-                              <TableCell className="text-right">
-                                {role === "admin" ? (
-                                  <Button asChild size="sm" variant="outline">
-                                    <Link href={`/admin/students/${st.studentUserId}`}>
-                                      Open <ExternalLink className="h-3.5 w-3.5" />
-                                    </Link>
-                                  </Button>
-                                ) : (
-                                  <span className="text-xs text-muted-foreground">—</span>
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                          {attendanceDetail.studentStats.map((st) => {
+                            const presentLike = st.presentCount + st.lateCount + st.excusedCount;
+                            const rate = safeRate(presentLike, st.totalMarked);
+                            return (
+                              <TableRow key={st.studentProfileId}>
+                                <TableCell>
+                                  <div className="font-medium">
+                                    {st.rollNumber ? `${st.rollNumber} • ` : ""}
+                                    {st.firstName} {st.lastName}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right">{presentLike}</TableCell>
+                                <TableCell className="text-right">{st.absentCount}</TableCell>
+                                <TableCell className="text-right">
+                                  {rate === null ? "-" : `${rate.toFixed(1)}%`}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {role === "admin" ? (
+                                    <Button asChild size="sm" variant="outline">
+                                      <Link href={`/admin/students/${st.studentUserId}`}>
+                                        Open <ExternalLink className="h-3.5 w-3.5" />
+                                      </Link>
+                                    </Button>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">—</span>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </div>
-                  )}
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

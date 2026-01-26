@@ -4,7 +4,7 @@ import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { getTeacherAnalyticsAccess, resolveAcademicRangeOrFallback } from "@/app/api/analytics/_utils";
 
-// GET /api/analytics/performance/sections
+// GET /api/analytics/attendance/sections
 // Admin: all sections in school
 // Teacher: only sections they teach (class teacher OR section-subject assignment)
 export async function GET(request: NextRequest) {
@@ -22,12 +22,14 @@ export async function GET(request: NextRequest) {
     const classId = searchParams.get("classId");
 
     const schoolId = session.user.schoolId;
-
     const range = await resolveAcademicRangeOrFallback(schoolId, searchParams);
     if (!range) {
       return NextResponse.json({ error: "Invalid academic year/term" }, { status: 400 });
     }
-    const { from, to } = range;
+
+    const from = new Date(range.from);
+    const to = new Date(range.to);
+    to.setHours(23, 59, 59, 999);
 
     let allowedSectionIds: string[] | null = null;
     if (session.user.role === "TEACHER") {
@@ -54,11 +56,25 @@ export async function GET(request: NextRequest) {
         classId: string;
         className: string;
         studentCount: number;
-        assessmentCount: number;
-        resultCount: number;
-        avgPercent: number | null;
+        totalMarked: number;
+        presentCount: number;
+        absentCount: number;
+        lateCount: number;
+        excusedCount: number;
       }>
     >(Prisma.sql`
+      WITH att AS (
+        SELECT
+          "sectionId",
+          COUNT(*)::int AS "totalMarked",
+          SUM(CASE WHEN status = 'PRESENT' THEN 1 ELSE 0 END)::int AS "presentCount",
+          SUM(CASE WHEN status = 'ABSENT' THEN 1 ELSE 0 END)::int AS "absentCount",
+          SUM(CASE WHEN status = 'LATE' THEN 1 ELSE 0 END)::int AS "lateCount",
+          SUM(CASE WHEN status = 'EXCUSED' THEN 1 ELSE 0 END)::int AS "excusedCount"
+        FROM "Attendance"
+        WHERE date >= ${from} AND date <= ${to}
+        GROUP BY "sectionId"
+      )
       SELECT
         s.id AS "sectionId",
         s.name AS "sectionName",
@@ -69,31 +85,14 @@ export async function GET(request: NextRequest) {
           FROM "StudentProfile" sp
           WHERE sp."sectionId" = s.id
         ) AS "studentCount",
-        (
-          SELECT COUNT(*)::int
-          FROM "Assessment" a
-          WHERE a."sectionId" = s.id
-            AND a."date" >= ${from}
-            AND a."date" <= ${to}
-        ) AS "assessmentCount",
-        (
-          SELECT COUNT(ar.id)::int
-          FROM "Assessment" a
-          INNER JOIN "AssessmentResult" ar ON ar."assessmentId" = a.id
-          WHERE a."sectionId" = s.id
-            AND a."date" >= ${from}
-            AND a."date" <= ${to}
-        ) AS "resultCount",
-        (
-          SELECT AVG((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100)
-          FROM "Assessment" a
-          INNER JOIN "AssessmentResult" ar ON ar."assessmentId" = a.id
-          WHERE a."sectionId" = s.id
-            AND a."date" >= ${from}
-            AND a."date" <= ${to}
-        ) AS "avgPercent"
+        COALESCE(att."totalMarked", 0)::int AS "totalMarked",
+        COALESCE(att."presentCount", 0)::int AS "presentCount",
+        COALESCE(att."absentCount", 0)::int AS "absentCount",
+        COALESCE(att."lateCount", 0)::int AS "lateCount",
+        COALESCE(att."excusedCount", 0)::int AS "excusedCount"
       FROM "Section" s
       INNER JOIN "Class" c ON c.id = s."classId"
+      LEFT JOIN att ON att."sectionId" = s.id
       WHERE c."schoolId" = ${schoolId}
       ${classFilterSql}
       ${sectionFilterSql}
@@ -116,10 +115,11 @@ export async function GET(request: NextRequest) {
       sections: rows,
     });
   } catch (error) {
-    console.error("Error fetching performance section analytics:", error);
+    console.error("Error fetching attendance analytics:", error);
     return NextResponse.json(
-      { error: "Failed to fetch performance analytics" },
+      { error: "Failed to fetch attendance analytics" },
       { status: 500 }
     );
   }
 }
+

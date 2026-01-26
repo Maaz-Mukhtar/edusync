@@ -4,11 +4,9 @@ import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { getTeacherAnalyticsAccess, resolveAcademicRangeOrFallback } from "@/app/api/analytics/_utils";
 
-// GET /api/analytics/performance/sections/[sectionId]
-// Admin: full section analytics
-// Teacher:
-//  - if class teacher of section: full section analytics
-//  - else: analytics limited to subjects they teach in that section
+// GET /api/analytics/attendance/sections/[sectionId]
+// Admin: full section attendance analytics
+// Teacher: only sections they teach (class teacher OR section-subject assignment)
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ sectionId: string }> }
@@ -27,32 +25,22 @@ export async function GET(
     const { searchParams } = new URL(request.url);
 
     const schoolId = session.user.schoolId;
-
     const range = await resolveAcademicRangeOrFallback(schoolId, searchParams);
     if (!range) {
       return NextResponse.json({ error: "Invalid academic year/term" }, { status: 400 });
     }
-    const { from, to } = range;
 
-    let allowedSubjectIds: string[] | null = null;
+    const from = new Date(range.from);
+    const to = new Date(range.to);
+    to.setHours(23, 59, 59, 999);
+
     if (session.user.role === "TEACHER") {
       const access = await getTeacherAnalyticsAccess(session.user.id, schoolId);
       if (!access) {
         return NextResponse.json({ error: "Teacher profile not found" }, { status: 404 });
       }
-
       if (!access.allowedSectionIds.includes(sectionId)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-
-      const isClassTeacher = access.classTeacherSectionIds.has(sectionId);
-      if (!isClassTeacher) {
-        const subjectSet = access.subjectIdsBySection.get(sectionId);
-        const subjectIds = subjectSet ? Array.from(subjectSet) : [];
-        if (subjectIds.length === 0) {
-          return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
-        allowedSubjectIds = subjectIds;
       }
     }
 
@@ -73,35 +61,24 @@ export async function GET(
       return NextResponse.json({ error: "Section not found" }, { status: 404 });
     }
 
-    const subjectFilterSql =
-      allowedSubjectIds && allowedSubjectIds.length > 0
-        ? Prisma.sql`AND a."subjectId" IN (${Prisma.join(allowedSubjectIds)})`
-        : Prisma.empty;
-
-    const subjectStats = await prisma.$queryRaw<
+    const overall = await prisma.$queryRaw<
       Array<{
-        subjectId: string;
-        subjectName: string;
-        assessmentCount: number;
-        resultCount: number;
-        avgPercent: number | null;
+        totalMarked: number;
+        presentCount: number;
+        absentCount: number;
+        lateCount: number;
+        excusedCount: number;
       }>
     >(Prisma.sql`
       SELECT
-        sub.id AS "subjectId",
-        sub.name AS "subjectName",
-        COUNT(DISTINCT a.id)::int AS "assessmentCount",
-        COUNT(ar.id)::int AS "resultCount",
-        AVG((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) AS "avgPercent"
-      FROM "Assessment" a
-      INNER JOIN "Subject" sub ON sub.id = a."subjectId"
-      LEFT JOIN "AssessmentResult" ar ON ar."assessmentId" = a.id
-      WHERE a."sectionId" = ${sectionId}
-        AND a."date" >= ${from}
-        AND a."date" <= ${to}
-        ${subjectFilterSql}
-      GROUP BY sub.id
-      ORDER BY sub.name ASC
+        COUNT(*)::int AS "totalMarked",
+        SUM(CASE WHEN status = 'PRESENT' THEN 1 ELSE 0 END)::int AS "presentCount",
+        SUM(CASE WHEN status = 'ABSENT' THEN 1 ELSE 0 END)::int AS "absentCount",
+        SUM(CASE WHEN status = 'LATE' THEN 1 ELSE 0 END)::int AS "lateCount",
+        SUM(CASE WHEN status = 'EXCUSED' THEN 1 ELSE 0 END)::int AS "excusedCount"
+      FROM "Attendance"
+      WHERE "sectionId" = ${sectionId}
+        AND date >= ${from} AND date <= ${to}
     `);
 
     const studentStats = await prisma.$queryRaw<
@@ -111,8 +88,11 @@ export async function GET(
         firstName: string;
         lastName: string;
         rollNumber: string | null;
-        resultCount: number;
-        avgPercent: number | null;
+        totalMarked: number;
+        presentCount: number;
+        absentCount: number;
+        lateCount: number;
+        excusedCount: number;
       }>
     >(Prisma.sql`
       SELECT
@@ -121,41 +101,20 @@ export async function GET(
         u."firstName" AS "firstName",
         u."lastName" AS "lastName",
         sp."rollNumber" AS "rollNumber",
-        COUNT(ar.id)::int AS "resultCount",
-        AVG((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) AS "avgPercent"
+        COUNT(att.id)::int AS "totalMarked",
+        SUM(CASE WHEN att.status = 'PRESENT' THEN 1 ELSE 0 END)::int AS "presentCount",
+        SUM(CASE WHEN att.status = 'ABSENT' THEN 1 ELSE 0 END)::int AS "absentCount",
+        SUM(CASE WHEN att.status = 'LATE' THEN 1 ELSE 0 END)::int AS "lateCount",
+        SUM(CASE WHEN att.status = 'EXCUSED' THEN 1 ELSE 0 END)::int AS "excusedCount"
       FROM "StudentProfile" sp
       INNER JOIN "User" u ON u.id = sp."userId"
-      LEFT JOIN "Assessment" a
-        ON a."sectionId" = sp."sectionId"
-        AND a."date" >= ${from}
-        AND a."date" <= ${to}
-        ${subjectFilterSql}
-      LEFT JOIN "AssessmentResult" ar
-        ON ar."assessmentId" = a.id
-        AND ar."studentId" = sp.id
+      LEFT JOIN "Attendance" att
+        ON att."studentId" = sp.id
+        AND att.date >= ${from} AND att.date <= ${to}
       WHERE sp."sectionId" = ${sectionId}
         AND u."schoolId" = ${schoolId}
       GROUP BY sp.id, u.id
       ORDER BY sp."rollNumber" ASC NULLS LAST, u."firstName" ASC, u."lastName" ASC
-    `);
-
-    const overall = await prisma.$queryRaw<
-      Array<{
-        assessmentCount: number;
-        resultCount: number;
-        avgPercent: number | null;
-      }>
-    >(Prisma.sql`
-      SELECT
-        COUNT(DISTINCT a.id)::int AS "assessmentCount",
-        COUNT(ar.id)::int AS "resultCount",
-        AVG((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) AS "avgPercent"
-      FROM "Assessment" a
-      LEFT JOIN "AssessmentResult" ar ON ar."assessmentId" = a.id
-      WHERE a."sectionId" = ${sectionId}
-        AND a."date" >= ${from}
-        AND a."date" <= ${to}
-        ${subjectFilterSql}
     `);
 
     return NextResponse.json({
@@ -171,15 +130,21 @@ export async function GET(
         class: section.class,
         studentCount: section._count.students,
       },
-      overall: overall[0] ?? { assessmentCount: 0, resultCount: 0, avgPercent: null },
-      subjectStats,
+      overall: overall[0] ?? {
+        totalMarked: 0,
+        presentCount: 0,
+        absentCount: 0,
+        lateCount: 0,
+        excusedCount: 0,
+      },
       studentStats,
     });
   } catch (error) {
-    console.error("Error fetching performance section detail analytics:", error);
+    console.error("Error fetching section attendance analytics:", error);
     return NextResponse.json(
-      { error: "Failed to fetch performance analytics" },
+      { error: "Failed to fetch attendance analytics" },
       { status: 500 }
     );
   }
 }
+
