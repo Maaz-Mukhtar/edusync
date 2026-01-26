@@ -353,16 +353,19 @@ export default async function AdminDashboard() {
             ) : (
               <div className="space-y-3">
                 {stats.recentUsers.map((user) => (
-                  <div key={user.id} className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-sm">
+                  <div key={user.id} className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm truncate">
                         {user.firstName} {user.lastName}
                       </p>
-                      <p className="text-xs text-muted-foreground">{user.email}</p>
+                      <p
+                        className="text-xs text-muted-foreground truncate max-w-[200px] sm:max-w-[260px]"
+                        title={user.email || ""}
+                      >
+                        {user.email}
+                      </p>
                     </div>
-                    <Badge className={roleColors[user.role]}>
-                      {user.role}
-                    </Badge>
+                    <Badge className={roleColors[user.role]}>{user.role}</Badge>
                   </div>
                 ))}
               </div>
