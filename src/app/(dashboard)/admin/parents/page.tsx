@@ -237,7 +237,9 @@ export default function ParentsPage() {
             </Avatar>
             <div>
               <div className="font-medium">
-                {parent.firstName} {parent.lastName}
+                <Link href={`/admin/parents/${parent.id}`} className="hover:underline">
+                  {parent.firstName} {parent.lastName}
+                </Link>
               </div>
               <div className="text-sm text-muted-foreground">
                 {parent.email || parent.phone}

@@ -192,7 +192,9 @@ export default function UsersPage() {
             </Avatar>
             <div>
               <div className="font-medium">
-                {user.firstName} {user.lastName}
+                <Link href={`/admin/users/${user.id}`} className="hover:underline">
+                  {user.firstName} {user.lastName}
+                </Link>
               </div>
               <div className="text-sm text-muted-foreground">
                 {user.email || user.phone}
