@@ -50,6 +50,7 @@ const adminNavItems: NavItem[] = [
   { title: "Subjects", href: "/admin/subjects", icon: BookOpen },
   { title: "Assignments", href: "/admin/assignments", icon: Grid3X3 },
   { title: "Parent Links", href: "/admin/parent-links", icon: Link2 },
+  { title: "Attendance", href: "/admin/attendance", icon: CheckSquare },
   { title: "Fee Management", href: "/admin/fees", icon: DollarSign },
   { title: "Events", href: "/admin/events", icon: CalendarCheck },
   { title: "Announcements", href: "/admin/announcements", icon: Bell },

@@ -42,14 +42,18 @@ export async function GET(request: NextRequest) {
 
     // Verify teacher has access to this section
     if (sectionId) {
-      const hasAccess = await prisma.sectionTeacher.findFirst({
-        where: {
-          teacherId: teacherProfile.id,
-          sectionId,
-        },
-      });
+      const [hasClassTeacherAccess, hasSubjectTeacherAccess] = await Promise.all([
+        prisma.sectionTeacher.findFirst({
+          where: { teacherId: teacherProfile.id, sectionId },
+          select: { id: true },
+        }),
+        prisma.sectionSubjectTeacher.findFirst({
+          where: { teacherId: teacherProfile.id, sectionId },
+          select: { id: true },
+        }),
+      ]);
 
-      if (!hasAccess) {
+      if (!hasClassTeacherAccess && !hasSubjectTeacherAccess) {
         return NextResponse.json({ error: "Access denied to this section" }, { status: 403 });
       }
     }
@@ -318,8 +322,8 @@ export async function POST(request: NextRequest) {
     // Verify teacher has access to this section
     const hasAccess = await prisma.sectionTeacher.findFirst({
       where: {
-        teacherId: teacherProfile.id,
         sectionId: validatedData.sectionId,
+        teacherId: teacherProfile.id,
       },
     });
 

@@ -78,6 +78,29 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const selectedSection = sections.find((s) => s.id === selectedSectionId);
+  const canMark = !!selectedSection?.isClassTeacher;
+
+  // Support deep links: /teacher/attendance?sectionId=...&date=YYYY-MM-DD
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sectionId = params.get("sectionId");
+    const date = params.get("date");
+
+    if (sectionId && sections.some((s) => s.id === sectionId)) {
+      setSelectedSectionId(sectionId);
+    }
+
+    if (date) {
+      const parsed = new Date(date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (Number.isFinite(parsed.getTime()) && parsed <= today) {
+        setSelectedDate(date);
+      }
+    }
+  }, [sections]);
+
   // Fetch attendance for selected section and date (only when changed from initial)
   const fetchAttendance = useCallback(async () => {
     if (!selectedSectionId || !selectedDate) return;
@@ -130,6 +153,7 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
   }, [selectedSectionId, selectedDate, initialData.initialSectionId, initialData.initialDate, fetchAttendance]);
 
   const handleStatusChange = (studentId: string, status: AttendanceStatus) => {
+    if (!canMark) return;
     setLocalRecords((prev) => {
       const newMap = new Map(prev);
       const existing = newMap.get(studentId);
@@ -139,6 +163,7 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
   };
 
   const handleRemarksChange = (studentId: string, remarks: string) => {
+    if (!canMark) return;
     setLocalRecords((prev) => {
       const newMap = new Map(prev);
       const existing = newMap.get(studentId);
@@ -150,7 +175,7 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
   };
 
   const markAllPresent = () => {
-    if (!attendanceData) return;
+    if (!attendanceData || !canMark) return;
     const newMap = new Map<string, { status: AttendanceStatus; remarks: string }>();
     attendanceData.records.forEach((r) => {
       newMap.set(r.studentId, { status: "PRESENT", remarks: "" });
@@ -159,7 +184,7 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
   };
 
   const saveAttendance = async () => {
-    if (!selectedSectionId || localRecords.size === 0) return;
+    if (!selectedSectionId || localRecords.size === 0 || !canMark) return;
 
     setSaving(true);
     setError(null);
@@ -199,8 +224,6 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
     }
   };
 
-  const selectedSection = sections.find((s) => s.id === selectedSectionId);
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -226,6 +249,11 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
                     <SelectItem key={section.id} value={section.id}>
                       <div className="flex items-center gap-2">
                         {section.name}
+                        {!section.isClassTeacher && (
+                          <Badge variant="secondary" className="text-xs">
+                            Subject
+                          </Badge>
+                        )}
                         {section.isMarkedToday && (
                           <CheckCircle className="h-4 w-4 text-green-500" />
                         )}
@@ -249,7 +277,7 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
             <div className="space-y-2">
               <Label>&nbsp;</Label>
               <div className="flex gap-2">
-                <Button onClick={markAllPresent} variant="outline" className="flex-1">
+                <Button onClick={markAllPresent} variant="outline" className="flex-1" disabled={!canMark}>
                   <CheckSquare className="h-4 w-4 mr-2" />
                   Mark All Present
                 </Button>
@@ -259,6 +287,11 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
               </div>
             </div>
           </div>
+          {!canMark && selectedSectionId && (
+            <p className="text-xs text-muted-foreground mt-4">
+              You can view attendance for this section, but only the class teacher can mark attendance.
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -299,12 +332,15 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
                       Attendance Marked
                     </Badge>
                   )}
+                  {selectedSectionId && !canMark && (
+                    <Badge variant="secondary">Read-only</Badge>
+                  )}
                 </CardTitle>
                 <CardDescription>
                   {attendanceData.records.length} students • {selectedDate}
                 </CardDescription>
               </div>
-              <Button onClick={saveAttendance} disabled={saving || localRecords.size === 0}>
+              <Button onClick={saveAttendance} disabled={saving || localRecords.size === 0 || !canMark}>
                 <Save className="h-4 w-4 mr-2" />
                 {saving ? "Saving..." : "Save Attendance"}
               </Button>
