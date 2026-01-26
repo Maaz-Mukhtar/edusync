@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { parseDateInputValue, toDateInputValue } from "@/lib/date";
 
 const saveAttendanceSchema = z.object({
   sectionId: z.string().min(1),
@@ -16,9 +17,7 @@ const saveAttendanceSchema = z.object({
 });
 
 function normalizeDate(dateStr: string) {
-  const d = new Date(dateStr);
-  d.setHours(0, 0, 0, 0);
-  return d;
+  return parseDateInputValue(dateStr);
 }
 
 // GET /api/admin/attendance
@@ -37,7 +36,8 @@ export async function GET(request: NextRequest) {
     const dateParam = searchParams.get("date");
     const classId = searchParams.get("classId");
 
-    const date = normalizeDate(dateParam || new Date().toISOString().split("T")[0]);
+    const date = normalizeDate(dateParam || toDateInputValue(new Date()));
+    if (!date) return NextResponse.json({ error: "Invalid date format" }, { status: 400 });
 
     if (sectionId) {
       const section = await prisma.section.findFirst({
@@ -161,6 +161,7 @@ export async function POST(request: NextRequest) {
     const validated = saveAttendanceSchema.parse(body);
 
     const date = normalizeDate(validated.date);
+    if (!date) return NextResponse.json({ error: "Invalid date format" }, { status: 400 });
 
     const section = await prisma.section.findFirst({
       where: { id: validated.sectionId, class: { schoolId: session.user.schoolId } },
@@ -213,4 +214,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Failed to save attendance" }, { status: 500 });
   }
 }
-

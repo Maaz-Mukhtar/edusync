@@ -29,9 +29,12 @@ import {
   Clock,
   AlertCircle,
   Save,
+  Pencil,
+  X,
   RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { parseDateInputValue, startOfLocalDay, toDateInputValue } from "@/lib/date";
 import type { AttendanceData, AttendanceRecord, AttendanceSection } from "@/lib/data/teacher";
 
 type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE" | "EXCUSED";
@@ -60,6 +63,7 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
   const [attendanceData, setAttendanceData] = useState<AttendanceRecordData | null>(
     initialData.initialRecords
   );
+  const [isEditing, setIsEditing] = useState<boolean>(!(initialData.initialRecords?.isMarked ?? false));
   const [localRecords, setLocalRecords] = useState<Map<string, { status: AttendanceStatus; remarks: string }>>(
     () => {
       const records = new Map<string, { status: AttendanceStatus; remarks: string }>();
@@ -79,7 +83,12 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
   const [success, setSuccess] = useState<string | null>(null);
 
   const selectedSection = sections.find((s) => s.id === selectedSectionId);
-  const canMark = !!selectedSection?.isClassTeacher;
+  const canMark = !!selectedSectionId;
+
+  // Lock after the first save; only unlock when user clicks "Edit"
+  useEffect(() => {
+    setIsEditing(!(attendanceData?.isMarked ?? false));
+  }, [attendanceData?.isMarked]);
 
   // Support deep links: /teacher/attendance?sectionId=...&date=YYYY-MM-DD
   useEffect(() => {
@@ -92,25 +101,28 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
     }
 
     if (date) {
-      const parsed = new Date(date);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (Number.isFinite(parsed.getTime()) && parsed <= today) {
-        setSelectedDate(date);
-      }
+      const parsed = parseDateInputValue(date);
+      const today = startOfLocalDay(new Date());
+      if (parsed && parsed <= today) setSelectedDate(date);
     }
   }, [sections]);
 
-  // Fetch attendance for selected section and date (only when changed from initial)
-  const fetchAttendance = useCallback(async () => {
+  const seedLocalRecordsFrom = useCallback((data: AttendanceRecordData | null) => {
+    const records = new Map<string, { status: AttendanceStatus; remarks: string }>();
+    data?.records.forEach((r) => {
+      if (r.status) records.set(r.studentId, { status: r.status, remarks: r.remarks || "" });
+    });
+    setLocalRecords(records);
+  }, []);
+
+  // Fetch attendance for selected section and date
+  const fetchAttendance = useCallback(async (signal?: AbortSignal) => {
     if (!selectedSectionId || !selectedDate) return;
 
-    // Skip if it's the initial data
-    if (
-      selectedSectionId === initialData.initialSectionId &&
-      selectedDate === initialData.initialDate &&
-      attendanceData === initialData.initialRecords
-    ) {
+    // Reuse initial payload when returning to the initial selection
+    if (selectedSectionId === initialData.initialSectionId && selectedDate === initialData.initialDate) {
+      setAttendanceData(initialData.initialRecords);
+      seedLocalRecordsFrom(initialData.initialRecords);
       return;
     }
 
@@ -119,41 +131,36 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
 
     try {
       const response = await fetch(
-        `/api/teacher/attendance?sectionId=${selectedSectionId}&date=${selectedDate}`
+        `/api/teacher/attendance?sectionId=${selectedSectionId}&date=${selectedDate}`,
+        { signal }
       );
       if (response.ok) {
         const result = await response.json();
         setAttendanceData(result);
-
-        // Initialize local records
-        const records = new Map<string, { status: AttendanceStatus; remarks: string }>();
-        result.records.forEach((r: AttendanceRecord) => {
-          if (r.status) {
-            records.set(r.studentId, { status: r.status, remarks: r.remarks || "" });
-          }
-        });
-        setLocalRecords(records);
+        seedLocalRecordsFrom(result);
+      } else {
+        const result = await response.json().catch(() => null);
+        setError(result?.error || "Failed to load attendance data");
       }
     } catch (error) {
+      if ((error as { name?: string }).name === "AbortError") return;
       console.error("Failed to fetch attendance:", error);
       setError("Failed to load attendance data");
     } finally {
       setLoading(false);
     }
-  }, [selectedSectionId, selectedDate, initialData, attendanceData]);
+  }, [selectedSectionId, selectedDate, initialData.initialSectionId, initialData.initialDate, initialData.initialRecords, seedLocalRecordsFrom]);
 
-  // Fetch when section or date changes
+  // Fetch when section or date changes (abort in-flight requests)
   useEffect(() => {
-    if (
-      selectedSectionId !== initialData.initialSectionId ||
-      selectedDate !== initialData.initialDate
-    ) {
-      fetchAttendance();
-    }
-  }, [selectedSectionId, selectedDate, initialData.initialSectionId, initialData.initialDate, fetchAttendance]);
+    if (!selectedSectionId || !selectedDate) return;
+    const controller = new AbortController();
+    fetchAttendance(controller.signal);
+    return () => controller.abort();
+  }, [selectedSectionId, selectedDate, fetchAttendance]);
 
   const handleStatusChange = (studentId: string, status: AttendanceStatus) => {
-    if (!canMark) return;
+    if (!isEditing) return;
     setLocalRecords((prev) => {
       const newMap = new Map(prev);
       const existing = newMap.get(studentId);
@@ -163,7 +170,7 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
   };
 
   const handleRemarksChange = (studentId: string, remarks: string) => {
-    if (!canMark) return;
+    if (!isEditing) return;
     setLocalRecords((prev) => {
       const newMap = new Map(prev);
       const existing = newMap.get(studentId);
@@ -175,7 +182,7 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
   };
 
   const markAllPresent = () => {
-    if (!attendanceData || !canMark) return;
+    if (!attendanceData || !isEditing) return;
     const newMap = new Map<string, { status: AttendanceStatus; remarks: string }>();
     attendanceData.records.forEach((r) => {
       newMap.set(r.studentId, { status: "PRESENT", remarks: "" });
@@ -183,8 +190,13 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
     setLocalRecords(newMap);
   };
 
+  const cancelEdit = () => {
+    seedLocalRecordsFrom(attendanceData);
+    setIsEditing(false);
+  };
+
   const saveAttendance = async () => {
-    if (!selectedSectionId || localRecords.size === 0 || !canMark) return;
+    if (!selectedSectionId || localRecords.size === 0 || !isEditing) return;
 
     setSaving(true);
     setError(null);
@@ -210,6 +222,7 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
       if (response.ok) {
         const result = await response.json();
         setSuccess(result.message);
+        setIsEditing(false);
         // Refresh attendance data
         fetchAttendance();
       } else {
@@ -270,14 +283,19 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                max={new Date().toISOString().split("T")[0]}
+                max={toDateInputValue(new Date())}
               />
             </div>
 
             <div className="space-y-2">
               <Label>&nbsp;</Label>
               <div className="flex gap-2">
-                <Button onClick={markAllPresent} variant="outline" className="flex-1" disabled={!canMark}>
+                <Button
+                  onClick={markAllPresent}
+                  variant="outline"
+                  className="flex-1"
+                  disabled={!canMark || !isEditing}
+                >
                   <CheckSquare className="h-4 w-4 mr-2" />
                   Mark All Present
                 </Button>
@@ -287,11 +305,6 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
               </div>
             </div>
           </div>
-          {!canMark && selectedSectionId && (
-            <p className="text-xs text-muted-foreground mt-4">
-              You can view attendance for this section, but only the class teacher can mark attendance.
-            </p>
-          )}
         </CardContent>
       </Card>
 
@@ -332,19 +345,37 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
                       Attendance Marked
                     </Badge>
                   )}
-                  {selectedSectionId && !canMark && (
-                    <Badge variant="secondary">Read-only</Badge>
+                  {attendanceData.isMarked && !isEditing && (
+                    <Badge variant="secondary">Locked</Badge>
                   )}
                 </CardTitle>
                 <CardDescription>
                   {attendanceData.records.length} students • {selectedDate}
                 </CardDescription>
               </div>
-              <Button onClick={saveAttendance} disabled={saving || localRecords.size === 0 || !canMark}>
+              <Button onClick={saveAttendance} disabled={saving || localRecords.size === 0 || !canMark || !isEditing}>
                 <Save className="h-4 w-4 mr-2" />
                 {saving ? "Saving..." : "Save Attendance"}
               </Button>
             </div>
+            {attendanceData.isMarked && (
+              <div className="mt-4 flex items-center gap-2">
+                {!isEditing ? (
+                  <Button variant="outline" onClick={() => setIsEditing(true)}>
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Edit
+                  </Button>
+                ) : (
+                  <Button variant="outline" onClick={cancelEdit}>
+                    <X className="h-4 w-4 mr-2" />
+                    Cancel
+                  </Button>
+                )}
+                <span className="text-xs text-muted-foreground">
+                  Attendance locks after saving. Click Edit to make changes.
+                </span>
+              </div>
+            )}
           </CardHeader>
           <CardContent>
             {attendanceData.records.length === 0 ? (
@@ -384,6 +415,7 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
                                   key={status}
                                   variant="ghost"
                                   size="sm"
+                                  disabled={!isEditing}
                                   className={cn(
                                     "h-8 px-2",
                                     isSelected && config.bg,
@@ -404,7 +436,7 @@ export default function AttendanceContent({ initialData }: AttendanceContentProp
                             value={localRecord?.remarks || ""}
                             onChange={(e) => handleRemarksChange(record.studentId, e.target.value)}
                             className="h-8"
-                            disabled={!localRecord}
+                            disabled={!isEditing || !localRecord}
                           />
                         </TableCell>
                       </TableRow>

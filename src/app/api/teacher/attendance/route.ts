@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { parseDateInputValue } from "@/lib/date";
 
 const markAttendanceSchema = z.object({
   sectionId: z.string().min(1, "Section is required"),
@@ -60,8 +61,10 @@ export async function GET(request: NextRequest) {
 
     // If specific date, get attendance for that date
     if (sectionId && date) {
-      const attendanceDate = new Date(date);
-      attendanceDate.setHours(0, 0, 0, 0);
+      const attendanceDate = parseDateInputValue(date);
+      if (!attendanceDate) {
+        return NextResponse.json({ error: "Invalid date format" }, { status: 400 });
+      }
 
       const attendance = await prisma.attendance.findMany({
         where: {
@@ -257,7 +260,6 @@ export async function GET(request: NextRequest) {
     });
 
     // Combine and deduplicate sections
-    const classTeacherSectionIds = new Set(classTeacherSections.map(ct => ct.sectionId));
     const allSections = new Map<string, { section: typeof classTeacherSections[0]["section"]; isClassTeacher: boolean }>();
 
     for (const ct of classTeacherSections) {
@@ -319,20 +321,32 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validatedData = markAttendanceSchema.parse(body);
 
-    // Verify teacher has access to this section
-    const hasAccess = await prisma.sectionTeacher.findFirst({
-      where: {
-        sectionId: validatedData.sectionId,
-        teacherId: teacherProfile.id,
-      },
-    });
+    // Verify teacher has access to this section (class teacher OR subject teacher)
+    const [hasClassTeacherAccess, hasSubjectTeacherAccess] = await Promise.all([
+      prisma.sectionTeacher.findFirst({
+        where: {
+          sectionId: validatedData.sectionId,
+          teacherId: teacherProfile.id,
+        },
+        select: { id: true },
+      }),
+      prisma.sectionSubjectTeacher.findFirst({
+        where: {
+          sectionId: validatedData.sectionId,
+          teacherId: teacherProfile.id,
+        },
+        select: { id: true },
+      }),
+    ]);
 
-    if (!hasAccess) {
+    if (!hasClassTeacherAccess && !hasSubjectTeacherAccess) {
       return NextResponse.json({ error: "Access denied to this section" }, { status: 403 });
     }
 
-    const attendanceDate = new Date(validatedData.date);
-    attendanceDate.setHours(0, 0, 0, 0);
+    const attendanceDate = parseDateInputValue(validatedData.date);
+    if (!attendanceDate) {
+      return NextResponse.json({ error: "Invalid date format" }, { status: 400 });
+    }
 
     // Delete existing attendance for this date and section (to allow updates)
     await prisma.attendance.deleteMany({

@@ -2,17 +2,19 @@ import { test, expect } from '@playwright/test';
 
 // Configuration
 const CREDENTIALS = {
-  email: 'fatima.ali@citygrammar.edu.pk',
-  password: 'password123',
+  email: process.env.PLAYWRIGHT_EMAIL || 'admin@sns.edupal.com',
+  password: process.env.PLAYWRIGHT_PASSWORD || 'password',
 };
+
+const DASHBOARD_PATH = process.env.PLAYWRIGHT_DASHBOARD_PATH || '/admin';
 
 // Pages to test
 const PAGES = [
-  { name: 'Dashboard', path: '/teacher' },
-  { name: 'Attendance', path: '/teacher/attendance' },
-  { name: 'Gradebook', path: '/teacher/gradebook' },
-  { name: 'Assessments', path: '/teacher/assessments' },
-  { name: 'Classes', path: '/teacher/classes' },
+  { name: 'Dashboard', path: DASHBOARD_PATH },
+  { name: 'Attendance', path: `${DASHBOARD_PATH}/attendance` },
+  { name: 'Students', path: `${DASHBOARD_PATH}/students` },
+  { name: 'Classes', path: `${DASHBOARD_PATH}/classes` },
+  { name: 'Subjects', path: `${DASHBOARD_PATH}/subjects` },
 ];
 
 // Number of times to run each navigation for averaging
@@ -42,8 +44,8 @@ test.describe('Page Load Performance Test', () => {
     // Submit and wait for navigation
     await page.click('button[type="submit"]');
 
-    // Wait for redirect to teacher dashboard
-    await page.waitForURL('**/teacher**', { timeout: 30000 });
+    // Wait for redirect to dashboard
+    await page.waitForURL(`**${DASHBOARD_PATH}**`, { timeout: 30000 });
     await page.waitForLoadState('load');
   });
 
@@ -61,7 +63,7 @@ test.describe('Page Load Performance Test', () => {
 
       for (let i = 0; i < ITERATIONS; i++) {
         // Start from dashboard to ensure consistent starting point
-        await page.goto('/teacher');
+        await page.goto(DASHBOARD_PATH);
         await page.waitForLoadState('load');
         await page.waitForSelector('h1', { timeout: 15000 });
 
@@ -123,17 +125,21 @@ test.describe('Page Load Performance Test', () => {
     // Write results to JSON file for comparison
     const fs = await import('fs');
     const branchName = process.env.GIT_BRANCH || 'unknown';
-    const resultFile = `tests/results-${branchName.replace(/\//g, '-')}.json`;
+    if (branchName !== 'unknown') {
+      const resultFile = `tests/results-${branchName.replace(/\//g, '-')}.json`;
 
-    fs.writeFileSync(resultFile, JSON.stringify({
-      branch: branchName,
-      timestamp: new Date().toISOString(),
-      iterations: ITERATIONS,
-      results,
-      totalAverage,
-    }, null, 2));
+      fs.writeFileSync(resultFile, JSON.stringify({
+        branch: branchName,
+        timestamp: new Date().toISOString(),
+        iterations: ITERATIONS,
+        results,
+        totalAverage,
+      }, null, 2));
 
-    console.log(`  Results saved to: ${resultFile}\n`);
+      console.log(`  Results saved to: ${resultFile}\n`);
+    } else {
+      console.log(`  Results file skipped (set GIT_BRANCH to save)\n`);
+    }
 
     // Basic assertion to ensure test passes
     expect(totalAverage).toBeLessThan(60000); // Should complete in under 60 seconds total
@@ -147,14 +153,14 @@ test.describe('Page Load Performance Test', () => {
     console.log('========================================\n');
 
     const flow = [
-      { name: 'Dashboard', path: '/teacher' },
-      { name: 'Attendance', path: '/teacher/attendance' },
-      { name: 'Gradebook', path: '/teacher/gradebook' },
-      { name: 'Assessments', path: '/teacher/assessments' },
+      { name: 'Dashboard', path: DASHBOARD_PATH },
+      { name: 'Attendance', path: `${DASHBOARD_PATH}/attendance` },
+      { name: 'Students', path: `${DASHBOARD_PATH}/students` },
+      { name: 'Classes', path: `${DASHBOARD_PATH}/classes` },
     ];
 
     // Start at dashboard
-    await page.goto('/teacher');
+    await page.goto(DASHBOARD_PATH);
     await page.waitForLoadState('load');
     await page.waitForSelector('h1', { timeout: 15000 });
 

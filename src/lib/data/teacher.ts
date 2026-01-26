@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { startOfLocalDay, toDateInputValue } from "@/lib/date";
 import { redirect } from "next/navigation";
 import { unstable_cache } from "next/cache";
 
@@ -411,9 +412,8 @@ export interface AttendanceData {
 
 // Internal function to fetch attendance data (cacheable)
 async function fetchAttendanceDataInternal(teacherId: string): Promise<AttendanceData> {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayStr = today.toISOString().split("T")[0];
+  const today = startOfLocalDay(new Date());
+  const todayStr = toDateInputValue(today);
 
   // Get sections where teacher is class teacher
   const classTeacherSections = await prisma.sectionTeacher.findMany({

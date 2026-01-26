@@ -18,6 +18,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { CheckCircle, RotateCcw, Save, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toDateInputValue } from "@/lib/date";
 import type { AdminAttendanceData, AdminAttendanceRecordData, AdminAttendanceSection } from "@/lib/data/admin-attendance";
 
 type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE" | "EXCUSED";
@@ -244,7 +245,7 @@ export default function AdminAttendanceContent({ initialData }: AdminAttendanceC
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                max={new Date().toISOString().split("T")[0]}
+                max={toDateInputValue(new Date())}
               />
             </div>
 

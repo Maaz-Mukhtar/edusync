@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { startOfLocalDay, toDateInputValue } from "@/lib/date";
 
 export interface AdminAttendanceSection {
   id: string;
@@ -40,9 +41,8 @@ async function getAdminSchoolId() {
 export async function getAdminAttendanceData(): Promise<AdminAttendanceData> {
   const schoolId = await getAdminSchoolId();
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayStr = today.toISOString().split("T")[0];
+  const today = startOfLocalDay(new Date());
+  const todayStr = toDateInputValue(today);
 
   const sections = await prisma.section.findMany({
     where: { class: { schoolId } },
@@ -111,4 +111,3 @@ export async function getAdminAttendanceData(): Promise<AdminAttendanceData> {
     initialRecords,
   };
 }
-

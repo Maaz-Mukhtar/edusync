@@ -11,6 +11,7 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:headstart": "tsx prisma/seed-headstart.ts",
     "db:studio": "prisma studio",
     "test:perf": "npx playwright test tests/performance.spec.ts",
     "test:perf:ui": "npx playwright test tests/performance.spec.ts --ui",
