@@ -15,6 +15,7 @@ import {
   Bell,
   Settings,
   BarChart3,
+  TrendingUp,
   FileText,
   Clock,
   CheckSquare,
@@ -39,6 +40,7 @@ interface NavItem {
 
 const adminNavItems: NavItem[] = [
   { title: "Dashboard", href: "/admin", icon: LayoutDashboard },
+  { title: "Analytics", href: "/admin/analytics", icon: TrendingUp },
   { title: "Academic Years", href: "/admin/academic-years", icon: CalendarDays },
   { title: "Students", href: "/admin/students", icon: GraduationCap },
   { title: "Teachers", href: "/admin/teachers", icon: UserCog },
@@ -57,6 +59,7 @@ const adminNavItems: NavItem[] = [
 
 const teacherNavItems: NavItem[] = [
   { title: "Dashboard", href: "/teacher", icon: LayoutDashboard },
+  { title: "Analytics", href: "/teacher/analytics", icon: TrendingUp },
   { title: "My Classes", href: "/teacher/classes", icon: School },
   { title: "Attendance", href: "/teacher/attendance", icon: CheckSquare },
   { title: "Gradebook", href: "/teacher/gradebook", icon: ClipboardList },
