@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { TrendingUp, Users, BookOpen, ListChecks, ExternalLink } from "lucide-react";
@@ -54,19 +53,17 @@ function formatPercent(value: number | null) {
   return `${value.toFixed(1)}%`;
 }
 
-function toDateInputValue(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
 export function PerformanceDashboard({
   role,
 }: {
   role: "admin" | "teacher";
 }) {
   const [classes, setClasses] = useState<Array<{ id: string; name: string }>>([]);
+  const [academicYears, setAcademicYears] = useState<
+    Array<{ id: string; name: string; isCurrent: boolean }>
+  >([]);
+  const [terms, setTerms] = useState<Array<{ id: string; name: string }>>([]);
+
   const [sections, setSections] = useState<SectionRow[]>([]);
   const [selectedClassId, setSelectedClassId] = useState("all");
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
@@ -74,19 +71,17 @@ export function PerformanceDashboard({
 
   const [isLoadingSections, setIsLoadingSections] = useState(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [isLoadingPeriods, setIsLoadingPeriods] = useState(true);
 
-  const now = useMemo(() => new Date(), []);
-  const [from, setFrom] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return toDateInputValue(d);
-  });
-  const [to, setTo] = useState(() => toDateInputValue(now));
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<string>("");
+  const [selectedTermId, setSelectedTermId] = useState<string>("all");
 
-  const fetchSections = async () => {
+  const fetchSections = useCallback(async () => {
     setIsLoadingSections(true);
     try {
-      const params = new URLSearchParams({ from, to });
+      const params = new URLSearchParams();
+      if (selectedAcademicYearId) params.set("academicYearId", selectedAcademicYearId);
+      if (selectedTermId) params.set("termId", selectedTermId);
       if (selectedClassId !== "all") params.set("classId", selectedClassId);
       const response = await fetch(`/api/analytics/performance/sections?${params.toString()}`);
       const data = await response.json();
@@ -105,17 +100,73 @@ export function PerformanceDashboard({
     } finally {
       setIsLoadingSections(false);
     }
-  };
+  }, [selectedAcademicYearId, selectedTermId, selectedClassId]);
 
-  useEffect(() => {
-    fetchSections();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const fetchAcademicYears = useCallback(async () => {
+    setIsLoadingPeriods(true);
+    try {
+      const response = await fetch("/api/academic-years");
+      const data = await response.json();
+      if (!response.ok) {
+        toast.error(data.error || "Failed to load academic years");
+        setAcademicYears([]);
+        return;
+      }
+      const years = (Array.isArray(data) ? data : []).map((y) => ({
+        id: y.id as string,
+        name: y.name as string,
+        isCurrent: Boolean(y.isCurrent),
+      }));
+      setAcademicYears(years);
+
+      const current = years.find((y) => y.isCurrent) ?? years[0];
+      if (current && !selectedAcademicYearId) {
+        setSelectedAcademicYearId(current.id);
+      }
+    } catch {
+      toast.error("Failed to load academic years");
+      setAcademicYears([]);
+    } finally {
+      setIsLoadingPeriods(false);
+    }
+  }, [selectedAcademicYearId]);
+
+  const fetchTerms = useCallback(async (academicYearId: string) => {
+    if (!academicYearId) {
+      setTerms([]);
+      return;
+    }
+    try {
+      const response = await fetch(`/api/academic-years/${academicYearId}`);
+      const data = await response.json();
+      if (!response.ok) {
+        setTerms([]);
+        return;
+      }
+      const nextTerms = (data.terms || []).map((t: { id: string; name: string }) => ({
+        id: t.id,
+        name: t.name,
+      }));
+      setTerms(nextTerms);
+    } catch {
+      setTerms([]);
+    }
   }, []);
 
   useEffect(() => {
+    fetchAcademicYears();
+  }, [fetchAcademicYears]);
+
+  useEffect(() => {
+    if (!selectedAcademicYearId) return;
+    fetchTerms(selectedAcademicYearId);
+    setSelectedTermId("all");
+  }, [selectedAcademicYearId, fetchTerms]);
+
+  useEffect(() => {
+    if (!selectedAcademicYearId) return;
     fetchSections();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClassId, from, to]);
+  }, [selectedAcademicYearId, selectedClassId, selectedTermId, fetchSections]);
 
   useEffect(() => {
     if (!selectedSectionId) {
@@ -130,10 +181,12 @@ export function PerformanceDashboard({
     }
   }, [sections, selectedSectionId]);
 
-  const fetchSectionDetail = async (sectionId: string) => {
+  const fetchSectionDetail = useCallback(async (sectionId: string) => {
     setIsLoadingDetail(true);
     try {
-      const params = new URLSearchParams({ from, to });
+      const params = new URLSearchParams();
+      if (selectedAcademicYearId) params.set("academicYearId", selectedAcademicYearId);
+      if (selectedTermId) params.set("termId", selectedTermId);
       const response = await fetch(
         `/api/analytics/performance/sections/${sectionId}?${params.toString()}`
       );
@@ -150,13 +203,12 @@ export function PerformanceDashboard({
     } finally {
       setIsLoadingDetail(false);
     }
-  };
+  }, [selectedAcademicYearId, selectedTermId]);
 
   useEffect(() => {
     if (!selectedSectionId) return;
     fetchSectionDetail(selectedSectionId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSectionId, from, to]);
+  }, [selectedSectionId, selectedAcademicYearId, selectedTermId, fetchSectionDetail]);
 
   const headerTitle = role === "admin" ? "Analytics" : "My Analytics";
   const headerDescription =
@@ -179,9 +231,51 @@ export function PerformanceDashboard({
       <Card>
         <CardHeader>
           <CardTitle>Filters</CardTitle>
-          <CardDescription>Choose a class and date range.</CardDescription>
+          <CardDescription>Choose academic year, term, and class.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap items-end gap-4">
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Academic Year</div>
+            <Select
+              value={selectedAcademicYearId}
+              onValueChange={(value) => setSelectedAcademicYearId(value)}
+              disabled={isLoadingPeriods || academicYears.length === 0}
+            >
+              <SelectTrigger className="w-[240px]">
+                <SelectValue placeholder={isLoadingPeriods ? "Loading…" : "Select year"} />
+              </SelectTrigger>
+              <SelectContent>
+                {academicYears.map((y) => (
+                  <SelectItem key={y.id} value={y.id}>
+                    {y.name}
+                    {y.isCurrent ? " (Current)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Term</div>
+            <Select
+              value={selectedTermId}
+              onValueChange={(value) => setSelectedTermId(value)}
+              disabled={!selectedAcademicYearId}
+            >
+              <SelectTrigger className="w-[240px]">
+                <SelectValue placeholder="All terms" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Terms</SelectItem>
+                {terms.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="space-y-2">
             <div className="text-sm font-medium">Class</div>
             <Select value={selectedClassId} onValueChange={setSelectedClassId}>
@@ -197,16 +291,6 @@ export function PerformanceDashboard({
                 ))}
               </SelectContent>
             </Select>
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-sm font-medium">From</div>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-[180px]" />
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-sm font-medium">To</div>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-[180px]" />
           </div>
 
           <Button variant="outline" onClick={fetchSections} disabled={isLoadingSections}>
@@ -400,4 +484,3 @@ export function PerformanceDashboard({
     </div>
   );
 }
-

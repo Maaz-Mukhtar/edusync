@@ -3,10 +3,54 @@ import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 
-function parseDateRange(searchParams: URLSearchParams) {
+async function resolveAcademicRangeOrFallback(
+  schoolId: string,
+  searchParams: URLSearchParams
+) {
+  const academicYearId = searchParams.get("academicYearId");
+  const termId = searchParams.get("termId");
+
   const fromParam = searchParams.get("from");
   const toParam = searchParams.get("to");
 
+  // Prefer academic year / term selection.
+  if (academicYearId) {
+    const year = await prisma.academicYear.findFirst({
+      where: { id: academicYearId, schoolId },
+      select: { id: true, startDate: true, endDate: true },
+    });
+    if (!year) return null;
+
+    if (termId && termId !== "all") {
+      const term = await prisma.term.findFirst({
+        where: { id: termId, academicYearId: year.id },
+        select: { id: true, startDate: true, endDate: true },
+      });
+      if (!term) return null;
+      return { academicYearId: year.id, termId: term.id, from: term.startDate, to: term.endDate };
+    }
+
+    return { academicYearId: year.id, termId: "all", from: year.startDate, to: year.endDate };
+  }
+
+  const currentYear = await prisma.academicYear.findFirst({
+    where: { schoolId, isCurrent: true },
+    select: { id: true, startDate: true, endDate: true },
+  });
+  if (currentYear) {
+    if (termId && termId !== "all") {
+      const term = await prisma.term.findFirst({
+        where: { id: termId, academicYearId: currentYear.id },
+        select: { id: true, startDate: true, endDate: true },
+      });
+      if (term) {
+        return { academicYearId: currentYear.id, termId: term.id, from: term.startDate, to: term.endDate };
+      }
+    }
+    return { academicYearId: currentYear.id, termId: "all", from: currentYear.startDate, to: currentYear.endDate };
+  }
+
+  // Legacy fallback: from/to or last 30 days
   const now = new Date();
   const defaultTo = new Date(now);
   const defaultFrom = new Date(now);
@@ -14,9 +58,10 @@ function parseDateRange(searchParams: URLSearchParams) {
 
   const from = fromParam ? new Date(fromParam) : defaultFrom;
   const to = toParam ? new Date(toParam) : defaultTo;
-  to.setHours(23, 59, 59, 999);
 
   return {
+    academicYearId: null,
+    termId: null,
     from: Number.isFinite(from.getTime()) ? from : defaultFrom,
     to: Number.isFinite(to.getTime()) ? to : defaultTo,
   };
@@ -71,9 +116,14 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const classId = searchParams.get("classId");
-    const { from, to } = parseDateRange(searchParams);
 
     const schoolId = session.user.schoolId;
+
+    const range = await resolveAcademicRangeOrFallback(schoolId, searchParams);
+    if (!range) {
+      return NextResponse.json({ error: "Invalid academic year/term" }, { status: 400 });
+    }
+    const { from, to } = range;
 
     let allowedSectionIds: string[] | null = null;
     if (session.user.role === "TEACHER") {
@@ -153,6 +203,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       filters: {
         classId: classId ?? null,
+        academicYearId: range.academicYearId,
+        termId: range.termId,
         from: from.toISOString(),
         to: to.toISOString(),
       },
