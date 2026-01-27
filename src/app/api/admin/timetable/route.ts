@@ -274,7 +274,10 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const code = typeof (error as any)?.code === "string" ? (error as any).code : undefined;
+    const code =
+      error && typeof error === "object" && "code" in error && typeof (error as { code?: unknown }).code === "string"
+        ? (error as { code: string }).code
+        : undefined;
     console.error("Admin timetable GET failed", error);
     return NextResponse.json(
       {
@@ -298,7 +301,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const action = (body as any)?.action as string | undefined;
+  const action =
+    body && typeof body === "object" && "action" in body && typeof (body as { action?: unknown }).action === "string"
+      ? (body as { action: string }).action
+      : undefined;
 
   try {
     if (action === "createSchedule") {
