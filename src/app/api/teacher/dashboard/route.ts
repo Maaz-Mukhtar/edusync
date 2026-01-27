@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { getCurrentTermForSchool } from "@/lib/data/current-term";
 
 // GET /api/teacher/dashboard - Get teacher dashboard stats
 export async function GET() {
@@ -26,6 +27,7 @@ export async function GET() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const dayOfWeek = today.getDay();
+    const currentTerm = await getCurrentTermForSchool(session.user.schoolId);
 
     // Get sections where teacher is class teacher
     const classTeacherSections = await prisma.sectionTeacher.findMany({
@@ -53,21 +55,20 @@ export async function GET() {
       totalStudents,
     ] = await Promise.all([
       // Get today's schedule for teacher's sections
-      prisma.timetableSlot.findMany({
-        where: {
-          sectionId: { in: allSectionIds },
-          dayOfWeek,
-        },
-        include: {
-          section: {
-            include: {
-              class: true,
+      currentTerm
+        ? prisma.timetableSlot.findMany({
+            where: {
+              sectionId: { in: allSectionIds },
+              dayOfWeek,
+              timetable: { termId: currentTerm.termId, status: "PUBLISHED" },
             },
-          },
-          subject: true,
-        },
-        orderBy: { startTime: "asc" },
-      }),
+            include: {
+              section: { include: { class: true } },
+              subject: true,
+            },
+            orderBy: { startTime: "asc" },
+          })
+        : Promise.resolve([]),
 
       // Get sections without attendance today
       prisma.section.findMany({

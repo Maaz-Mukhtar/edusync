@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { revalidateParentsForStudents, revalidateStudents, revalidateTeachers } from "@/lib/cache-revalidate";
 
 const updateAssessmentSchema = z.object({
   title: z.string().min(1).optional(),
@@ -182,6 +183,8 @@ export async function PUT(
       },
     });
 
+    revalidateTeachers([teacherProfile.id]);
+
     return NextResponse.json({ assessment });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -238,6 +241,8 @@ export async function DELETE(
     await prisma.assessment.delete({
       where: { id },
     });
+
+    revalidateTeachers([teacherProfile.id]);
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -323,6 +328,11 @@ export async function PATCH(
         })
       )
     );
+
+    const studentIds = validatedData.results.map((r) => r.studentId);
+    revalidateTeachers([teacherProfile.id]);
+    revalidateStudents(studentIds);
+    await revalidateParentsForStudents(studentIds);
 
     return NextResponse.json({
       message: `Results recorded for ${validatedData.results.length} students`,

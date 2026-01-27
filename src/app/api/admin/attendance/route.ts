@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { parseDateInputValue, toDateInputValue } from "@/lib/date";
+import { revalidateParentsForStudents, revalidateStudents, revalidateTeachers } from "@/lib/cache-revalidate";
 
 const saveAttendanceSchema = z.object({
   sectionId: z.string().min(1),
@@ -198,6 +199,17 @@ export async function POST(request: NextRequest) {
         markedBy: null,
       })),
     });
+
+    const studentIdList = records.map((r) => r.studentId);
+    revalidateStudents(studentIdList);
+    await revalidateParentsForStudents(studentIdList);
+    const classTeacher = await prisma.sectionTeacher.findFirst({
+      where: { sectionId: validated.sectionId },
+      select: { teacherId: true },
+    });
+    if (classTeacher?.teacherId) {
+      revalidateTeachers([classTeacher.teacherId]);
+    }
 
     return NextResponse.json({
       message: `Attendance saved for ${created.count} students`,

@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { hash } from "bcryptjs";
 import { z } from "zod";
+import { revalidateParents, revalidateSections, revalidateStudents, revalidateTeachers } from "@/lib/cache-revalidate";
 
 const updateUserSchema = z.object({
   email: z.string().email().optional().nullable(),
@@ -220,6 +221,9 @@ export async function PUT(
 
     // Update profile based on role
     if (existingUser.role === "STUDENT" && existingUser.studentProfile) {
+      const previousSectionId = existingUser.studentProfile.sectionId;
+      const nextSectionId = validatedData.sectionId ?? previousSectionId;
+
       await prisma.studentProfile.update({
         where: { id: existingUser.studentProfile.id },
         data: {
@@ -230,6 +234,24 @@ export async function PUT(
           }),
         },
       });
+
+      revalidateStudents([existingUser.studentProfile.id]);
+      revalidateSections([previousSectionId, nextSectionId]);
+
+      if (previousSectionId !== nextSectionId) {
+        const [prevClassTeachers, prevSubjectTeachers, nextClassTeachers, nextSubjectTeachers] = await Promise.all([
+          prisma.sectionTeacher.findMany({ where: { sectionId: previousSectionId }, select: { teacherId: true } }),
+          prisma.sectionSubjectTeacher.findMany({ where: { sectionId: previousSectionId }, select: { teacherId: true } }),
+          prisma.sectionTeacher.findMany({ where: { sectionId: nextSectionId }, select: { teacherId: true } }),
+          prisma.sectionSubjectTeacher.findMany({ where: { sectionId: nextSectionId }, select: { teacherId: true } }),
+        ]);
+        revalidateTeachers([
+          ...prevClassTeachers.map((t) => t.teacherId),
+          ...prevSubjectTeachers.map((t) => t.teacherId),
+          ...nextClassTeachers.map((t) => t.teacherId),
+          ...nextSubjectTeachers.map((t) => t.teacherId),
+        ]);
+      }
     }
 
     if (existingUser.role === "TEACHER" && existingUser.teacherProfile) {
@@ -240,6 +262,8 @@ export async function PUT(
           ...(validatedData.qualification !== undefined && { qualification: validatedData.qualification }),
         },
       });
+
+      revalidateTeachers([existingUser.teacherProfile.id]);
     }
 
     if (existingUser.role === "PARENT" && existingUser.parentProfile) {
@@ -250,6 +274,8 @@ export async function PUT(
           ...(validatedData.relationship !== undefined && { relationship: validatedData.relationship }),
         },
       });
+
+      revalidateParents([existingUser.parentProfile.id]);
     }
 
     return NextResponse.json({ user });
@@ -291,6 +317,11 @@ export async function DELETE(
         id,
         schoolId: session.user.schoolId,
       },
+      include: {
+        studentProfile: true,
+        teacherProfile: true,
+        parentProfile: true,
+      },
     });
 
     if (!existingUser) {
@@ -309,6 +340,25 @@ export async function DELETE(
     await prisma.user.delete({
       where: { id },
     });
+
+    if (existingUser.studentProfile) {
+      revalidateStudents([existingUser.studentProfile.id]);
+      revalidateSections([existingUser.studentProfile.sectionId]);
+      const [classTeachers, subjectTeachers] = await Promise.all([
+        prisma.sectionTeacher.findMany({ where: { sectionId: existingUser.studentProfile.sectionId }, select: { teacherId: true } }),
+        prisma.sectionSubjectTeacher.findMany({ where: { sectionId: existingUser.studentProfile.sectionId }, select: { teacherId: true } }),
+      ]);
+      revalidateTeachers([
+        ...classTeachers.map((t) => t.teacherId),
+        ...subjectTeachers.map((t) => t.teacherId),
+      ]);
+    }
+    if (existingUser.teacherProfile) {
+      revalidateTeachers([existingUser.teacherProfile.id]);
+    }
+    if (existingUser.parentProfile) {
+      revalidateParents([existingUser.parentProfile.id]);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

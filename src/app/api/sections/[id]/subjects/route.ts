@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { revalidateTeachers } from "@/lib/cache-revalidate";
 
 const assignTeacherSchema = z.object({
   subjectId: z.string().min(1),
@@ -212,6 +213,11 @@ export async function POST(
       );
     }
 
+    const previous = await prisma.sectionSubjectTeacher.findUnique({
+      where: { sectionId_subjectId: { sectionId, subjectId } },
+      select: { teacherId: true },
+    });
+
     // Upsert the section subject teacher assignment
     const assignment = await prisma.sectionSubjectTeacher.upsert({
       where: {
@@ -242,6 +248,8 @@ export async function POST(
         subject: true,
       },
     });
+
+    revalidateTeachers([teacherId, previous?.teacherId].filter(Boolean) as string[]);
 
     return NextResponse.json({ assignment }, { status: 201 });
   } catch (error) {
@@ -299,6 +307,14 @@ export async function DELETE(
       return NextResponse.json({ error: "Section not found" }, { status: 404 });
     }
 
+    const existing = await prisma.sectionSubjectTeacher.findUnique({
+      where: { sectionId_subjectId: { sectionId, subjectId } },
+      select: { teacherId: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "Assignment not found" }, { status: 404 });
+    }
+
     // Delete the assignment
     await prisma.sectionSubjectTeacher.delete({
       where: {
@@ -308,6 +324,8 @@ export async function DELETE(
         },
       },
     });
+
+    revalidateTeachers([existing.teacherId]);
 
     return NextResponse.json({ success: true });
   } catch (error) {

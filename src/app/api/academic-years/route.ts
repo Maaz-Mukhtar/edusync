@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { revalidateTag } from "next/cache";
 
 // GET /api/academic-years - Get all academic years for the school
 export async function GET() {
@@ -110,6 +111,13 @@ export async function POST(request: NextRequest) {
         isCurrent: data.isCurrent,
       },
     });
+
+    if (data.isCurrent) {
+      revalidateTag("teacher-timetable", "max");
+      revalidateTag("student-timetable", "max");
+      revalidateTag("teacher-dashboard", "max");
+      revalidateTag("student-dashboard", "max");
+    }
 
     return NextResponse.json(academicYear, { status: 201 });
   } catch (error) {

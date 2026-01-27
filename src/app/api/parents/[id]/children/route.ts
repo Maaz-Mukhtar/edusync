@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { revalidateTag } from "next/cache";
 
 const linkChildrenSchema = z.object({
   studentIds: z.array(z.string()),
@@ -140,6 +141,8 @@ export async function POST(
       skipDuplicates: true,
     });
 
+    revalidateTag(`parent-${parent.parentProfile.id}`, "max");
+
     return NextResponse.json({ success: true });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -205,6 +208,8 @@ export async function DELETE(
         studentId,
       },
     });
+
+    revalidateTag(`parent-${parent.parentProfile.id}`, "max");
 
     return NextResponse.json({ success: true });
   } catch (error) {

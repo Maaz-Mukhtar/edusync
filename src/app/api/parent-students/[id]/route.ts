@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { revalidateTag } from "next/cache";
 
 // DELETE /api/parent-students/[id] - Remove a parent-student link
 export async function DELETE(
@@ -38,6 +39,8 @@ export async function DELETE(
     await prisma.parentStudent.delete({
       where: { id },
     });
+
+    revalidateTag(`parent-${existingLink.parentId}`, "max");
 
     return NextResponse.json({ success: true });
   } catch (error) {

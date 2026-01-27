@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { unstable_cache } from "next/cache";
+import { revalidateTag } from "next/cache";
 import { ApprovalStatus } from "@prisma/client";
 
 // ==================== TYPES ====================
@@ -207,13 +208,11 @@ export async function getParentEventsData(): Promise<ParentEventsListData> {
     };
   }
 
-  const getCachedEvents = unstable_cache(
-    async (pid: string) => fetchParentEventsInternal(pid),
-    ["parent-events"],
-    { revalidate: 30, tags: ["parent-events"] }
-  );
-
-  return getCachedEvents(parentId);
+  return unstable_cache(
+    () => fetchParentEventsInternal(parentId),
+    [`parent-events-${parentId}`],
+    { revalidate: 30, tags: [`parent-${parentId}`, "parent-events"] }
+  )();
 }
 
 // ==================== ACTIONS ====================
@@ -256,6 +255,8 @@ export async function updateEventApproval(
         respondedAt: new Date(),
       },
     });
+
+    revalidateTag(`parent-${parentId}`, "max");
 
     return { success: true };
   } catch (error) {
@@ -302,6 +303,8 @@ export async function bulkUpdateEventApprovals(
         respondedAt: new Date(),
       },
     });
+
+    revalidateTag(`parent-${parentId}`, "max");
 
     return { success: true, count: result.count };
   } catch (error) {

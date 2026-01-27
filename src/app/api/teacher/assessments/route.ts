@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { revalidateTeachers } from "@/lib/cache-revalidate";
 
 const createAssessmentSchema = z.object({
   sectionId: z.string().min(1, "Section is required"),
@@ -180,6 +181,8 @@ export async function POST(request: NextRequest) {
         subject: true,
       },
     });
+
+    revalidateTeachers([teacherProfile.id]);
 
     return NextResponse.json({ assessment }, { status: 201 });
   } catch (error) {

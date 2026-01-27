@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { unstable_cache } from "next/cache";
+import { getCurrentTermForSchool } from "@/lib/data/current-term";
 
 // Cache configuration
 const CACHE_REVALIDATE_SECONDS = 60;
@@ -865,4 +866,95 @@ export async function getParentFeesData(): Promise<FeesData> {
 export async function getParentChildren(): Promise<ChildInfo[]> {
   const parentProfile = await getParentProfile();
   return parentProfile.childrenInfo;
+}
+
+// ============================================
+// CHILD TIMETABLE
+// ============================================
+
+export interface ChildTimetableSlot {
+  id: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  room: string | null;
+  subject: {
+    id: string;
+    name: string;
+    code: string | null;
+    color: string | null;
+  };
+  teacher: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+export interface ChildTimetableData {
+  academicYearName: string | null;
+  termName: string | null;
+  child: {
+    studentId: string;
+    name: string;
+    className: string;
+    sectionName: string;
+    rollNumber: string | null;
+  };
+  slots: ChildTimetableSlot[];
+}
+
+export async function getChildTimetableData(studentId: string): Promise<ChildTimetableData> {
+  const parentProfile = await getParentProfile();
+  const allowed = parentProfile.childrenInfo.some((c) => c.studentId === studentId);
+  if (!allowed) redirect(`/parent/timetable?child=${parentProfile.childrenInfo[0]?.studentId || ""}`);
+
+  const student = await prisma.studentProfile.findFirst({
+    where: {
+      id: studentId,
+      parents: { some: { parentId: parentProfile.id } },
+    },
+    include: {
+      user: { select: { firstName: true, lastName: true } },
+      section: { include: { class: true } },
+    },
+  });
+
+  if (!student) throw new Error("Student not found");
+
+  const currentTerm = await getCurrentTermForSchool(student.section.class.schoolId);
+
+  const slots = currentTerm
+    ? await prisma.timetableSlot.findMany({
+        where: {
+          sectionId: student.sectionId,
+          timetable: { termId: currentTerm.termId, status: "PUBLISHED" },
+        },
+        include: {
+          subject: true,
+          teacher: { include: { user: { select: { firstName: true, lastName: true } } } },
+        },
+        orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
+      })
+    : [];
+
+  return {
+    academicYearName: currentTerm?.academicYearName ?? null,
+    termName: currentTerm?.termName ?? null,
+    child: {
+      studentId: student.id,
+      name: `${student.user.firstName} ${student.user.lastName}`,
+      className: student.section.class.name,
+      sectionName: student.section.name,
+      rollNumber: student.rollNumber,
+    },
+    slots: slots.map((s) => ({
+      id: s.id,
+      dayOfWeek: s.dayOfWeek,
+      startTime: s.startTime,
+      endTime: s.endTime,
+      room: s.room,
+      subject: { id: s.subject.id, name: s.subject.name, code: s.subject.code, color: s.subject.color },
+      teacher: s.teacher ? { id: s.teacher.id, name: `${s.teacher.user.firstName} ${s.teacher.user.lastName}` } : null,
+    })),
+  };
 }

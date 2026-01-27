@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { revalidateParentsForStudents, revalidateStudents } from "@/lib/cache-revalidate";
 
 const updateInvoiceSchema = z.object({
   status: z.enum(["PENDING", "PAID", "OVERDUE"]).optional(),
@@ -137,6 +138,9 @@ export async function PUT(
       },
     });
 
+    revalidateStudents([invoice.studentId]);
+    await revalidateParentsForStudents([invoice.studentId]);
+
     return NextResponse.json({ invoice });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -189,6 +193,9 @@ export async function DELETE(
     await prisma.feeInvoice.delete({
       where: { id },
     });
+
+    revalidateStudents([existingInvoice.studentId]);
+    await revalidateParentsForStudents([existingInvoice.studentId]);
 
     return NextResponse.json({ success: true });
   } catch (error) {

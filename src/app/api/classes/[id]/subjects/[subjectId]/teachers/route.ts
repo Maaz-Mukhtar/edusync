@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { revalidateTeachers } from "@/lib/cache-revalidate";
 
 const assignTeacherSchema = z.object({
   teacherId: z.string().min(1),
@@ -159,6 +160,8 @@ export async function POST(
       },
     });
 
+    revalidateTeachers([teacherId]);
+
     return NextResponse.json({ assignment }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -233,6 +236,8 @@ export async function DELETE(
         subjectId,
       },
     });
+
+    revalidateTeachers([teacherId]);
 
     return NextResponse.json({ success: true });
   } catch (error) {

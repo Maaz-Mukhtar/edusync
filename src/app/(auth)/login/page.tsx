@@ -20,6 +20,11 @@ import {
 import { loginSchema, type LoginInput } from "@/lib/validations/auth";
 import { getSubdomainFromHost, getRoleDashboardPath } from "@/lib/utils";
 
+function defaultSchoolSubdomainForHost(host: string) {
+  if (host.includes("localhost:4000")) return "headstart";
+  return process.env.NEXT_PUBLIC_DEFAULT_SCHOOL_SUBDOMAIN || "sns";
+}
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -46,7 +51,8 @@ function LoginForm() {
 
     try {
       // Get subdomain from current host
-      const subdomain = getSubdomainFromHost(window.location.host) || "sns";
+      const host = window.location.host;
+      const subdomain = getSubdomainFromHost(host) || defaultSchoolSubdomainForHost(host);
 
       const result = await signIn("credentials", {
         email: loginMethod === "email" ? data.email : undefined,

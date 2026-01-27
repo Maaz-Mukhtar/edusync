@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { revalidateParentsForStudents, revalidateStudents, revalidateTeachers } from "@/lib/cache-revalidate";
 
 // POST /api/student/tests/[testId]/attempt/submit - Submit the test
 export async function POST(
@@ -141,7 +142,18 @@ export async function POST(
           remarks: `Online test completed. Score: ${totalScore}/${maxScore} (${percentage.toFixed(1)}%)`,
         },
       });
+
+      const assessment = await prisma.assessment.findUnique({
+        where: { id: attempt.onlineTest.assessmentId },
+        select: { createdById: true },
+      });
+      if (assessment?.createdById) {
+        revalidateTeachers([assessment.createdById]);
+      }
     }
+
+    revalidateStudents([studentProfile.id]);
+    await revalidateParentsForStudents([studentProfile.id]);
 
     return NextResponse.json({
       attempt: {

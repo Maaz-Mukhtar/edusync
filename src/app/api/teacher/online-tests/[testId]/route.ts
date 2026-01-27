@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { updateOnlineTestSchema } from "@/lib/validations/online-tests";
 import { z } from "zod";
+import { revalidateTeachers } from "@/lib/cache-revalidate";
 
 // GET /api/teacher/online-tests/[testId] - Get online test details
 export async function GET(
@@ -199,6 +200,8 @@ export async function PUT(
       },
     });
 
+    revalidateTeachers([teacherProfile.id]);
+
     return NextResponse.json({ onlineTest: updatedTest });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -273,6 +276,8 @@ export async function DELETE(
     await prisma.onlineTest.delete({
       where: { id: testId },
     });
+
+    revalidateTeachers([teacherProfile.id]);
 
     return NextResponse.json({ success: true });
   } catch (error) {

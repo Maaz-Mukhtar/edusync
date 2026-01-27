@@ -40,6 +40,16 @@ enum FeeFrequency {
   ONE_TIME
 }
 
+enum TimetableStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum BellScheduleSlotType {
+  PERIOD
+  BREAK
+}
+
 enum InvoiceStatus {
   PENDING
   PAID
@@ -48,11 +58,11 @@ enum InvoiceStatus {
 }
 
 enum EnrollmentStatus {
-  ACTIVE      // Currently enrolled
-  PROMOTED    // Promoted to next grade
-  GRADUATED   // Completed highest grade (alumni)
-  LEFT        // Left the school
-  RETAINED    // Retained in same grade (failed)
+  ACTIVE // Currently enrolled
+  PROMOTED // Promoted to next grade
+  GRADUATED // Completed highest grade (alumni)
+  LEFT // Left the school
+  RETAINED // Retained in same grade (failed)
 }
 
 // ==================== CORE MODELS ====================
@@ -75,6 +85,7 @@ model School {
   announcements Announcement[]
   academicYears AcademicYear[]
   events        Event[]
+  bellSchedules BellSchedule[]
 
   @@index([subdomain])
 }
@@ -152,7 +163,7 @@ model VerificationToken {
 model StudentProfile {
   id            String    @id @default(cuid())
   userId        String    @unique
-  sectionId     String    // Current section (kept for backwards compatibility)
+  sectionId     String // Current section (kept for backwards compatibility)
   rollNumber    String?
   dateOfBirth   DateTime?
   admissionDate DateTime?
@@ -169,7 +180,7 @@ model StudentProfile {
   insights       StudentInsight[]
   eventApprovals EventApproval[]
   conversations  Conversation[]
-  testAttempts   TestAttempt[]       // Online test attempts
+  testAttempts   TestAttempt[] // Online test attempts
 
   @@index([sectionId])
 }
@@ -182,13 +193,14 @@ model TeacherProfile {
   joinDate       DateTime?
   specialization String?
 
-  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user             User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   classTeacherOf   SectionTeacher[] // Sections where this teacher is class teacher
   subjectsTaught   TeacherSubject[] // Subjects this teacher can teach (class-level assignment)
   sectionSubjects  SectionSubjectTeacher[] // Section-level subject assignments
   attendancesTaken Attendance[]
   assessments      Assessment[]
   conversations    Conversation[]
+  timetableSlots   TimetableSlot[]
 }
 
 model ParentProfile {
@@ -267,6 +279,7 @@ model Term {
 
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
   assessments  Assessment[]
+  timetables   Timetable[]
 
   @@index([academicYearId])
 }
@@ -279,8 +292,9 @@ model Class {
 
   school        School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   sections      Section[]
-  subjects      Subject[]      // Subjects taught in this class
+  subjects      Subject[] // Subjects taught in this class
   feeStructures FeeStructure[]
+  timetables    Timetable[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -292,10 +306,10 @@ model Section {
   name     String
   capacity Int?
 
-  class           Class               @relation(fields: [classId], references: [id], onDelete: Cascade)
+  class           Class                   @relation(fields: [classId], references: [id], onDelete: Cascade)
   students        StudentProfile[]
   enrollments     StudentEnrollment[] // Year-wise enrollments
-  classTeacher    SectionTeacher?     // One class teacher per section
+  classTeacher    SectionTeacher? // One class teacher per section
   subjectTeachers SectionSubjectTeacher[] // Subject-wise teacher assignments
   timetable       TimetableSlot[]
   attendances     Attendance[]
@@ -312,10 +326,10 @@ model Subject {
   code    String?
   color   String?
 
-  class       Class                  @relation(fields: [classId], references: [id], onDelete: Cascade)
-  teachers    TeacherSubject[]       // Teachers who can teach this subject
-  timetable   TimetableSlot[]
-  assessments Assessment[]
+  class           Class                   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teachers        TeacherSubject[] // Teachers who can teach this subject
+  timetable       TimetableSlot[]
+  assessments     Assessment[]
   sectionTeachers SectionSubjectTeacher[] // Teachers assigned to teach this subject in specific sections
 
   @@unique([classId, name])
@@ -368,21 +382,83 @@ model TeacherSubject {
 
 // ==================== TIMETABLE ====================
 
+model BellSchedule {
+  id        String   @id @default(cuid())
+  schoolId  String
+  name      String
+  startTime String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  school     School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  slots      BellScheduleSlot[]
+  timetables Timetable[]
+
+  @@unique([schoolId, name])
+  @@index([schoolId])
+}
+
+model BellScheduleSlot {
+  id             String               @id @default(cuid())
+  bellScheduleId String
+  dayOfWeek      Int
+  order          Int
+  type           BellScheduleSlotType
+  label          String?
+  startTime      String
+  endTime        String
+
+  bellSchedule   BellSchedule    @relation(fields: [bellScheduleId], references: [id], onDelete: Cascade)
+  timetableSlots TimetableSlot[]
+
+  @@unique([bellScheduleId, dayOfWeek, order])
+  @@index([bellScheduleId])
+  @@index([dayOfWeek])
+}
+
+model Timetable {
+  id             String          @id @default(cuid())
+  classId        String
+  termId         String
+  bellScheduleId String
+  status         TimetableStatus
+  publishedAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  class        Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
+  term         Term            @relation(fields: [termId], references: [id], onDelete: Cascade)
+  bellSchedule BellSchedule    @relation(fields: [bellScheduleId], references: [id], onDelete: Cascade)
+  slots        TimetableSlot[]
+
+  @@unique([classId, termId, status])
+  @@index([classId])
+  @@index([termId])
+}
+
 model TimetableSlot {
-  id        String  @id @default(cuid())
-  sectionId String
-  subjectId String
-  teacherId String?
-  dayOfWeek Int // 0-6 (Sunday-Saturday)
-  startTime String // "08:00"
-  endTime   String // "08:45"
-  room      String?
+  id                 String  @id @default(cuid())
+  timetableId        String
+  sectionId          String
+  subjectId          String
+  teacherId          String?
+  dayOfWeek          Int // 0-6 (Sunday-Saturday)
+  startTime          String // "08:00"
+  endTime            String // "08:45"
+  room               String?
+  bellScheduleSlotId String
 
-  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  timetable        Timetable        @relation(fields: [timetableId], references: [id], onDelete: Cascade)
+  bellScheduleSlot BellScheduleSlot @relation(fields: [bellScheduleSlotId], references: [id], onDelete: Cascade)
 
+  section Section         @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher TeacherProfile? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+
+  @@unique([timetableId, sectionId, bellScheduleSlotId])
   @@index([sectionId])
   @@index([dayOfWeek])
+  @@index([teacherId])
 }
 
 // ==================== ATTENDANCE ====================
@@ -427,9 +503,9 @@ model Assessment {
   term       Term?              @relation(fields: [termId], references: [id])
   createdBy  TeacherProfile     @relation(fields: [createdById], references: [id])
   results    AssessmentResult[]
-  onlineTest OnlineTest?        // Optional one-to-one relationship with online test
-  questions  Question[]         // Questions for this assessment
-  files      AssessmentFile[]   // Uploaded files (PDF, images, docs)
+  onlineTest OnlineTest? // Optional one-to-one relationship with online test
+  questions  Question[] // Questions for this assessment
+  files      AssessmentFile[] // Uploaded files (PDF, images, docs)
 
   @@index([sectionId])
   @@index([subjectId])
@@ -516,14 +592,14 @@ model Announcement {
 // ==================== MESSAGING ====================
 
 model Conversation {
-  id         String   @id @default(cuid())
-  schoolId   String
-  studentId  String   // The student this conversation is about
-  teacherId  String   // Teacher profile ID
-  parentId   String   // Parent profile ID
-  subject    String?  // Optional subject/topic of conversation
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  schoolId  String
+  studentId String // The student this conversation is about
+  teacherId String // Teacher profile ID
+  parentId  String // Parent profile ID
+  subject   String? // Optional subject/topic of conversation
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   student  StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
   teacher  TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
@@ -540,7 +616,7 @@ model Conversation {
 model Message {
   id             String   @id @default(cuid())
   conversationId String
-  senderId       String   // User ID of sender
+  senderId       String // User ID of sender
   senderRole     UserRole // TEACHER or PARENT
   content        String   @db.Text
   isRead         Boolean  @default(false)
@@ -589,22 +665,22 @@ enum ApprovalStatus {
 }
 
 model Event {
-  id          String    @id @default(cuid())
-  schoolId    String
-  title       String
-  description String?   @db.Text
-  type        EventType
-  location    String?
-  startDate   DateTime
-  endDate     DateTime?
-  fee         Float?    // Optional fee for the event
-  capacity    Int?      // Max participants
-  deadline    DateTime  // Deadline for approval responses
-  targetAudience String[] // ["all", "class:7", "section:7-A"]
-  requiresApproval Boolean @default(true)
-  createdBy   String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id               String    @id @default(cuid())
+  schoolId         String
+  title            String
+  description      String?   @db.Text
+  type             EventType
+  location         String?
+  startDate        DateTime
+  endDate          DateTime?
+  fee              Float? // Optional fee for the event
+  capacity         Int? // Max participants
+  deadline         DateTime // Deadline for approval responses
+  targetAudience   String[] // ["all", "class:7", "section:7-A"]
+  requiresApproval Boolean   @default(true)
+  createdBy        String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   school    School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   approvals EventApproval[]
@@ -615,14 +691,14 @@ model Event {
 }
 
 model EventApproval {
-  id         String         @id @default(cuid())
-  eventId    String
-  studentId  String
-  parentId   String
-  status     ApprovalStatus @default(PENDING)
-  remarks    String?
+  id          String         @id @default(cuid())
+  eventId     String
+  studentId   String
+  parentId    String
+  status      ApprovalStatus @default(PENDING)
+  remarks     String?
   respondedAt DateTime?
-  createdAt  DateTime       @default(now())
+  createdAt   DateTime       @default(now())
 
   event   Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
   student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
@@ -638,7 +714,7 @@ model EventApproval {
 // ==================== ONLINE TESTS ====================
 
 enum QuestionType {
-  MCQ          // Multiple choice, single answer
+  MCQ // Multiple choice, single answer
   SHORT_ANSWER // Text-based, manually graded
 }
 
@@ -649,28 +725,28 @@ enum FileType {
 }
 
 enum OnlineTestStatus {
-  DRAFT     // Being created, not visible to students
+  DRAFT // Being created, not visible to students
   PUBLISHED // Available for students to take
-  CLOSED    // No longer accepting submissions
+  CLOSED // No longer accepting submissions
 }
 
 enum TestAttemptStatus {
   IN_PROGRESS // Student currently taking the test
-  SUBMITTED   // Student submitted, awaiting grading
-  GRADED      // All questions graded
+  SUBMITTED // Student submitted, awaiting grading
+  GRADED // All questions graded
 }
 
 model OnlineTest {
   id               String           @id @default(cuid())
   assessmentId     String           @unique
   status           OnlineTestStatus @default(DRAFT)
-  timeLimitMins    Int?             // Optional time limit in minutes
+  timeLimitMins    Int? // Optional time limit in minutes
   instructions     String?          @db.Text
   shuffleQuestions Boolean          @default(false)
   showResults      Boolean          @default(true) // Show results to student after submission
-  passingScore     Float?           // Optional passing percentage
-  startTime        DateTime?        // When test becomes available
-  endTime          DateTime?        // When test closes
+  passingScore     Float? // Optional passing percentage
+  startTime        DateTime? // When test becomes available
+  endTime          DateTime? // When test closes
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
@@ -684,12 +760,12 @@ model OnlineTest {
 model AssessmentFile {
   id           String   @id @default(cuid())
   assessmentId String
-  fileName     String   // Generated unique filename
-  originalName String   // Original uploaded filename
+  fileName     String // Generated unique filename
+  originalName String // Original uploaded filename
   fileType     FileType
-  fileSize     Int      // Size in bytes
+  fileSize     Int // Size in bytes
   mimeType     String
-  storagePath  String   // Path where file is stored
+  storagePath  String // Path where file is stored
   uploadedAt   DateTime @default(now())
 
   assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
@@ -699,11 +775,11 @@ model AssessmentFile {
 
 model Question {
   id           String       @id @default(cuid())
-  assessmentId String       // Questions belong to Assessment
+  assessmentId String // Questions belong to Assessment
   type         QuestionType
   questionText String       @db.Text
   marks        Float
-  orderIndex   Int          // For ordering questions
+  orderIndex   Int // For ordering questions
   explanation  String?      @db.Text // Shown after submission (optional)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -721,7 +797,7 @@ model QuestionOption {
   questionId String
   optionText String  @db.Text
   isCorrect  Boolean @default(false)
-  orderIndex Int     // For ordering options
+  orderIndex Int // For ordering options
 
   question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
@@ -735,11 +811,11 @@ model TestAttempt {
   status        TestAttemptStatus @default(IN_PROGRESS)
   startedAt     DateTime          @default(now())
   submittedAt   DateTime?
-  timeTakenSecs Int?              // Actual time taken in seconds
-  totalScore    Float?            // Calculated after grading
-  maxScore      Float?            // Total possible marks
-  percentage    Float?            // Calculated percentage
-  isPassed      Boolean?          // Based on passingScore if set
+  timeTakenSecs Int? // Actual time taken in seconds
+  totalScore    Float? // Calculated after grading
+  maxScore      Float? // Total possible marks
+  percentage    Float? // Calculated percentage
+  isPassed      Boolean? // Based on passingScore if set
 
   onlineTest OnlineTest      @relation(fields: [onlineTestId], references: [id], onDelete: Cascade)
   student    StudentProfile  @relation(fields: [studentId], references: [id], onDelete: Cascade)
@@ -756,12 +832,12 @@ model StudentAnswer {
   attemptId        String
   questionId       String
   answerText       String?   @db.Text // For short answer questions
-  selectedOptionId String?   // For MCQ questions (stores the selected option ID)
-  isCorrect        Boolean?  // Null until graded (auto for MCQ, manual for short-answer)
-  marksAwarded     Float?    // Null until graded
-  feedback         String?   // Teacher feedback for short-answer questions
+  selectedOptionId String? // For MCQ questions (stores the selected option ID)
+  isCorrect        Boolean? // Null until graded (auto for MCQ, manual for short-answer)
+  marksAwarded     Float? // Null until graded
+  feedback         String? // Teacher feedback for short-answer questions
   gradedAt         DateTime?
-  gradedBy         String?   // Teacher profile ID who graded (for short-answer)
+  gradedBy         String? // Teacher profile ID who graded (for short-answer)
 
   attempt  TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   question Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)

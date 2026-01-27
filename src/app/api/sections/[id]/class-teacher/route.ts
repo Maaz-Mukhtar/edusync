@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { revalidateTeachers } from "@/lib/cache-revalidate";
 
 const assignClassTeacherSchema = z.object({
   teacherId: z.string().min(1),
@@ -122,6 +123,11 @@ export async function POST(
       return NextResponse.json({ error: "Teacher not found" }, { status: 404 });
     }
 
+    const previous = await prisma.sectionTeacher.findUnique({
+      where: { sectionId },
+      select: { teacherId: true },
+    });
+
     // Upsert class teacher (since sectionId is unique, this replaces any existing assignment)
     const assignment = await prisma.sectionTeacher.upsert({
       where: {
@@ -148,6 +154,8 @@ export async function POST(
         },
       },
     });
+
+    revalidateTeachers([teacherId, previous?.teacherId].filter(Boolean) as string[]);
 
     return NextResponse.json({ classTeacher: assignment }, { status: 201 });
   } catch (error) {
@@ -196,12 +204,22 @@ export async function DELETE(
       return NextResponse.json({ error: "Section not found" }, { status: 404 });
     }
 
+    const existing = await prisma.sectionTeacher.findUnique({
+      where: { sectionId },
+      select: { teacherId: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "Class teacher not assigned" }, { status: 404 });
+    }
+
     // Delete class teacher assignment
     await prisma.sectionTeacher.delete({
       where: {
         sectionId,
       },
     });
+
+    revalidateTeachers([existing.teacherId]);
 
     return NextResponse.json({ success: true });
   } catch (error) {
