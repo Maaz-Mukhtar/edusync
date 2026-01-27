@@ -60,7 +60,7 @@ function termOptionsForYear(data: AdminTimetableBootstrapData, academicYearId: s
   return year?.terms ?? [];
 }
 
-async function readApiJson(res: Response): Promise<{ json: any; text: string }> {
+async function readApiJson(res: Response): Promise<{ json: unknown; text: string }> {
   const text = await res.text();
   if (!text) return { json: null, text: "" };
   try {
@@ -68,6 +68,10 @@ async function readApiJson(res: Response): Promise<{ json: any; text: string }> 
   } catch {
     return { json: null, text };
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export default function AdminTimetableContent({ data }: { data: AdminTimetableBootstrapData }) {
@@ -110,13 +114,17 @@ export default function AdminTimetableContent({ data }: { data: AdminTimetableBo
       const { json } = await readApiJson(res);
       if (!json) throw new Error(`Failed to load timetable (HTTP ${res.status})`);
       if (!res.ok) {
-        const details = typeof json?.details === "string" && json.details ? `: ${json.details}` : "";
-        const code = typeof json?.code === "string" && json.code ? ` (${json.code})` : "";
-        throw new Error((json?.error || `Failed to load timetable (HTTP ${res.status})`) + code + details);
+        const obj = isRecord(json) ? json : {};
+        const details = typeof obj.details === "string" && obj.details ? `: ${obj.details}` : "";
+        const code = typeof obj.code === "string" && obj.code ? ` (${obj.code})` : "";
+        const message =
+          typeof obj.error === "string" ? obj.error : `Failed to load timetable (HTTP ${res.status})`;
+        throw new Error(message + code + details);
       }
-      setDetails(json as TimetableDetails);
+      const payload = json as TimetableDetails;
+      setDetails(payload);
 
-      if (!json.schedule) {
+      if (!payload.schedule) {
         setGrid({});
         const clsName = data.classes.find((c) => c.id === classId)?.name ?? "Class";
         const termName = selectedTerm?.name ?? "Term";
@@ -128,9 +136,9 @@ export default function AdminTimetableContent({ data }: { data: AdminTimetableBo
       }
 
       // Precompute bellSlotId -> periodNumber per day (PERIOD only)
-      const scheduleSlots: ScheduleSlot[] = json.schedule.slots;
+      const scheduleSlots: ScheduleSlot[] = payload.schedule.slots;
       const perDayPeriodSlots: Record<number, ScheduleSlot[]> = {};
-      for (const day of json.days as DayInfo[]) perDayPeriodSlots[day.dayOfWeek] = [];
+      for (const day of payload.days as DayInfo[]) perDayPeriodSlots[day.dayOfWeek] = [];
       for (const slot of scheduleSlots) {
         if (slot.type !== "PERIOD") continue;
         perDayPeriodSlots[slot.dayOfWeek].push(slot);
@@ -145,7 +153,7 @@ export default function AdminTimetableContent({ data }: { data: AdminTimetableBo
       }
 
       const nextGrid: Record<string, GridEntry> = {};
-      const draftSlots = (json.draft?.slots ?? []) as DraftSlots;
+      const draftSlots = (payload.draft?.slots ?? []) as DraftSlots;
       for (const slot of draftSlots) {
         const periodNumber = bellIdToPeriodNumber.get(slot.bellScheduleSlotId);
         if (!periodNumber) continue;
@@ -194,7 +202,12 @@ export default function AdminTimetableContent({ data }: { data: AdminTimetableBo
       });
       const { json } = await readApiJson(res);
       if (!json) throw new Error(`Failed to create schedule (HTTP ${res.status})`);
-      if (!res.ok) throw new Error(json?.error || `Failed to create schedule (HTTP ${res.status})`);
+      if (!res.ok) {
+        const obj = isRecord(json) ? json : {};
+        const message =
+          typeof obj.error === "string" ? obj.error : `Failed to create schedule (HTTP ${res.status})`;
+        throw new Error(message);
+      }
       toast.success("Schedule created");
       await load();
     } catch (e) {
@@ -232,8 +245,15 @@ export default function AdminTimetableContent({ data }: { data: AdminTimetableBo
       });
       const { json } = await readApiJson(res);
       if (!json) throw new Error(`Failed to save draft (HTTP ${res.status})`);
-      if (!res.ok) throw new Error(json?.error || `Failed to save draft (HTTP ${res.status})`);
-      toast.success(`Draft saved (${json.count} slots)`);
+      if (!res.ok) {
+        const obj = isRecord(json) ? json : {};
+        const message =
+          typeof obj.error === "string" ? obj.error : `Failed to save draft (HTTP ${res.status})`;
+        throw new Error(message);
+      }
+      const obj = isRecord(json) ? json : {};
+      const count = typeof obj.count === "number" ? obj.count : 0;
+      toast.success(`Draft saved (${count} slots)`);
       await load();
     } catch (e) {
       toast.error((e as Error).message);
@@ -254,10 +274,16 @@ export default function AdminTimetableContent({ data }: { data: AdminTimetableBo
       const { json } = await readApiJson(res);
       if (!json) throw new Error(`Failed to publish (HTTP ${res.status})`);
       if (!res.ok) {
-        if (json?.details?.a && json?.details?.b) {
-          throw new Error(`Teacher conflict: ${json.details.a.context} overlaps ${json.details.b.context}`);
-        }
-        throw new Error(json?.error || "Failed to publish");
+        const obj = isRecord(json) ? json : {};
+        const details = isRecord(obj.details) ? (obj.details as Record<string, unknown>) : null;
+        const a = details && isRecord(details.a) ? (details.a as Record<string, unknown>) : null;
+        const b = details && isRecord(details.b) ? (details.b as Record<string, unknown>) : null;
+        const aCtx = a && typeof a.context === "string" ? a.context : null;
+        const bCtx = b && typeof b.context === "string" ? b.context : null;
+        if (aCtx && bCtx) throw new Error(`Teacher conflict: ${aCtx} overlaps ${bCtx}`);
+
+        const message = typeof obj.error === "string" ? obj.error : "Failed to publish";
+        throw new Error(message);
       }
       toast.success("Timetable published");
       await load();
@@ -279,7 +305,14 @@ export default function AdminTimetableContent({ data }: { data: AdminTimetableBo
       });
       const { json } = await readApiJson(res);
       if (!json) throw new Error(`Failed to start editing published timetable (HTTP ${res.status})`);
-      if (!res.ok) throw new Error(json?.error || `Failed to start editing published timetable (HTTP ${res.status})`);
+      if (!res.ok) {
+        const obj = isRecord(json) ? json : {};
+        const message =
+          typeof obj.error === "string"
+            ? obj.error
+            : `Failed to start editing published timetable (HTTP ${res.status})`;
+        throw new Error(message);
+      }
       toast.success("Draft created from published timetable");
       await load();
     } catch (e) {
@@ -302,7 +335,12 @@ export default function AdminTimetableContent({ data }: { data: AdminTimetableBo
       });
       const { json } = await readApiJson(res);
       if (!json) throw new Error(`Failed to copy timetable (HTTP ${res.status})`);
-      if (!res.ok) throw new Error(json?.error || `Failed to copy timetable (HTTP ${res.status})`);
+      if (!res.ok) {
+        const obj = isRecord(json) ? json : {};
+        const message =
+          typeof obj.error === "string" ? obj.error : `Failed to copy timetable (HTTP ${res.status})`;
+        throw new Error(message);
+      }
       toast.success("Copied published Term 1 into this term's draft");
       await load();
     } catch (e) {

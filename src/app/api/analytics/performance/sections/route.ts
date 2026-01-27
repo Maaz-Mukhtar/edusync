@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
-import { getTeacherAnalyticsAccess, resolveAcademicRangeOrFallback } from "@/app/api/analytics/_utils";
+import { getTeacherAnalyticsAccess } from "@/app/api/analytics/_utils";
+import { resolveAnalyticsPeriodOrError } from "@/lib/analytics/resolve-period";
 
 // GET /api/analytics/performance/sections
 // Admin: all sections in school
@@ -23,10 +24,9 @@ export async function GET(request: NextRequest) {
 
     const schoolId = session.user.schoolId;
 
-    const range = await resolveAcademicRangeOrFallback(schoolId, searchParams);
-    if (!range) {
-      return NextResponse.json({ error: "Invalid academic year/term" }, { status: 400 });
-    }
+    const resolved = await resolveAnalyticsPeriodOrError(schoolId, searchParams);
+    if (!resolved.ok) return NextResponse.json({ error: resolved.error }, { status: 400 });
+    const range = resolved.period;
     const { from, to } = range;
 
     let allowedSectionIds: string[] | null = null;

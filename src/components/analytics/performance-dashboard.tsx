@@ -130,7 +130,7 @@ export function PerformanceDashboard({
     try {
       const params = new URLSearchParams();
       if (selectedAcademicYearId) params.set("academicYearId", selectedAcademicYearId);
-      if (selectedTermId) params.set("termId", selectedTermId);
+      if (selectedTermId && selectedTermId !== "all") params.set("termId", selectedTermId);
       if (selectedClassId !== "all") params.set("classId", selectedClassId);
       const response = await fetch(`/api/analytics/performance/sections?${params.toString()}`);
       const data = await response.json();
@@ -162,7 +162,7 @@ export function PerformanceDashboard({
     try {
       const params = new URLSearchParams();
       if (selectedAcademicYearId) params.set("academicYearId", selectedAcademicYearId);
-      if (selectedTermId) params.set("termId", selectedTermId);
+      if (selectedTermId && selectedTermId !== "all") params.set("termId", selectedTermId);
       if (selectedClassId !== "all") params.set("classId", selectedClassId);
       const response = await fetch(`/api/analytics/attendance/sections?${params.toString()}`);
       const data = await response.json();
@@ -186,7 +186,7 @@ export function PerformanceDashboard({
       try {
         const params = new URLSearchParams();
         if (selectedAcademicYearId) params.set("academicYearId", selectedAcademicYearId);
-        if (selectedTermId) params.set("termId", selectedTermId);
+        if (selectedTermId && selectedTermId !== "all") params.set("termId", selectedTermId);
         const response = await fetch(
           `/api/analytics/attendance/sections/${sectionId}?${params.toString()}`
         );
@@ -308,7 +308,7 @@ export function PerformanceDashboard({
     try {
       const params = new URLSearchParams();
       if (selectedAcademicYearId) params.set("academicYearId", selectedAcademicYearId);
-      if (selectedTermId) params.set("termId", selectedTermId);
+      if (selectedTermId && selectedTermId !== "all") params.set("termId", selectedTermId);
       const response = await fetch(
         `/api/analytics/performance/sections/${sectionId}?${params.toString()}`
       );
