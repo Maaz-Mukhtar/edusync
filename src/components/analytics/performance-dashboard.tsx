@@ -20,6 +20,11 @@ type SectionRow = {
   assessmentCount: number;
   resultCount: number;
   avgPercent: number | null;
+  medianPercent: number | null;
+  bucketBelow50: number;
+  bucket50to69: number;
+  bucket70to84: number;
+  bucket85plus: number;
 };
 
 type SectionDetailResponse = {
@@ -30,10 +35,31 @@ type SectionDetailResponse = {
     class: { id: string; name: string };
     studentCount: number;
   };
-  overall: { assessmentCount: number; resultCount: number; avgPercent: number | null };
+  overall: {
+    assessmentCount: number;
+    resultCount: number;
+    avgPercent: number | null;
+    medianPercent: number | null;
+    bucketBelow50: number;
+    bucket50to69: number;
+    bucket70to84: number;
+    bucket85plus: number;
+  };
   subjectStats: Array<{
     subjectId: string;
     subjectName: string;
+    assessmentCount: number;
+    resultCount: number;
+    avgPercent: number | null;
+  }>;
+  typeStats: Array<{
+    type: string;
+    assessmentCount: number;
+    resultCount: number;
+    avgPercent: number | null;
+  }>;
+  trend: Array<{
+    bucket: string;
     assessmentCount: number;
     resultCount: number;
     avgPercent: number | null;
@@ -94,6 +120,12 @@ type AttendanceSectionDetailResponse = {
 function formatPercent(value: number | null) {
   if (value === null || !Number.isFinite(value)) return "-";
   return `${value.toFixed(1)}%`;
+}
+
+function formatMonthLabel(isoDate: string) {
+  const date = new Date(isoDate);
+  if (!Number.isFinite(date.getTime())) return isoDate;
+  return date.toLocaleString(undefined, { month: "short", year: "numeric" });
 }
 
 function safeRate(numerator: number, denominator: number) {
@@ -447,9 +479,9 @@ export function PerformanceDashboard({
                   <Users className="h-5 w-5" />
                   Sections
                 </CardTitle>
-                <CardDescription>Average scores by section (percent).</CardDescription>
-              </CardHeader>
-              <CardContent>
+	                <CardDescription>Average scores by section (percent).</CardDescription>
+	              </CardHeader>
+	              <CardContent>
                 {isLoadingSections ? (
                   <div className="text-sm text-muted-foreground">Loading…</div>
                 ) : sections.length === 0 ? (
@@ -457,14 +489,15 @@ export function PerformanceDashboard({
                 ) : (
                   <div className="rounded-md border">
                     <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Section</TableHead>
-                          <TableHead className="text-right">Avg</TableHead>
-                          <TableHead className="text-right">Results</TableHead>
-                          <TableHead className="w-[110px]"></TableHead>
-                        </TableRow>
-                      </TableHeader>
+	                      <TableHeader>
+	                        <TableRow>
+	                          <TableHead>Section</TableHead>
+	                          <TableHead className="text-right">Avg</TableHead>
+	                          <TableHead className="text-right">Median</TableHead>
+	                          <TableHead className="text-right">Results</TableHead>
+	                          <TableHead className="w-[110px]"></TableHead>
+	                        </TableRow>
+	                      </TableHeader>
                       <TableBody>
                         {sections.map((s) => {
                           const isSelected = selectedSectionId === s.sectionId;
@@ -476,14 +509,22 @@ export function PerformanceDashboard({
                                   {s.studentCount} students • {s.assessmentCount} assessments
                                 </div>
                               </TableCell>
-                              <TableCell className="text-right">
-                                <Badge variant={s.avgPercent === null ? "secondary" : "default"}>
-                                  {formatPercent(s.avgPercent)}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-right">{s.resultCount}</TableCell>
-                              <TableCell className="text-right">
-                                <Button
+	                              <TableCell className="text-right">
+	                                <Badge variant={s.avgPercent === null ? "secondary" : "default"}>
+	                                  {formatPercent(s.avgPercent)}
+	                                </Badge>
+	                              </TableCell>
+	                              <TableCell className="text-right">
+	                                <Badge variant={s.medianPercent === null ? "secondary" : "outline"}>
+	                                  {formatPercent(s.medianPercent)}
+	                                </Badge>
+	                                <div className="mt-1 text-[11px] leading-tight text-muted-foreground">
+	                                  {s.bucketBelow50}-{s.bucket50to69}-{s.bucket70to84}-{s.bucket85plus}
+	                                </div>
+	                              </TableCell>
+	                              <TableCell className="text-right">{s.resultCount}</TableCell>
+	                              <TableCell className="text-right">
+	                                <Button
                                   variant={isSelected ? "default" : "outline"}
                                   size="sm"
                                   onClick={() => setSelectedSectionId(s.sectionId)}
@@ -531,15 +572,97 @@ export function PerformanceDashboard({
                           {sectionDetail.section.studentCount} students • {sectionDetail.overall.assessmentCount} assessments • {sectionDetail.overall.resultCount} results
                         </div>
                       </div>
-                      <Badge variant={sectionDetail.overall.avgPercent === null ? "secondary" : "default"}>
-                        Overall {formatPercent(sectionDetail.overall.avgPercent)}
-                      </Badge>
-                    </div>
+	                      <Badge variant={sectionDetail.overall.avgPercent === null ? "secondary" : "default"}>
+	                        Avg {formatPercent(sectionDetail.overall.avgPercent)} • Median{" "}
+	                        {formatPercent(sectionDetail.overall.medianPercent)}
+	                      </Badge>
+	                    </div>
 
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium flex items-center gap-2">
-                        <BookOpen className="h-4 w-4" />
-                        Subjects
+	                    <div className="grid gap-3 sm:grid-cols-2">
+	                      <Card>
+	                        <CardHeader className="py-4">
+	                          <CardTitle className="text-base">Distribution</CardTitle>
+	                          <CardDescription className="text-xs"># results by score bucket</CardDescription>
+	                        </CardHeader>
+	                        <CardContent className="pb-4">
+	                          <div className="flex flex-wrap gap-2">
+	                            <Badge variant="secondary">{"<"}50: {sectionDetail.overall.bucketBelow50}</Badge>
+	                            <Badge variant="secondary">50–69: {sectionDetail.overall.bucket50to69}</Badge>
+	                            <Badge variant="secondary">70–84: {sectionDetail.overall.bucket70to84}</Badge>
+	                            <Badge variant="secondary">85+: {sectionDetail.overall.bucket85plus}</Badge>
+	                          </div>
+	                        </CardContent>
+	                      </Card>
+
+	                      <Card>
+	                        <CardHeader className="py-4">
+	                          <CardTitle className="text-base">Assessment Types</CardTitle>
+	                          <CardDescription className="text-xs">Average by type</CardDescription>
+	                        </CardHeader>
+	                        <CardContent className="pb-4">
+	                          {sectionDetail.typeStats.length === 0 ? (
+	                            <div className="text-sm text-muted-foreground">No assessments in range.</div>
+	                          ) : (
+	                            <div className="rounded-md border">
+	                              <Table>
+	                                <TableHeader>
+	                                  <TableRow>
+	                                    <TableHead>Type</TableHead>
+	                                    <TableHead className="text-right">Avg</TableHead>
+	                                    <TableHead className="text-right">Results</TableHead>
+	                                  </TableRow>
+	                                </TableHeader>
+	                                <TableBody>
+	                                  {sectionDetail.typeStats.map((t) => (
+	                                    <TableRow key={t.type}>
+	                                      <TableCell className="font-medium">{t.type}</TableCell>
+	                                      <TableCell className="text-right">{formatPercent(t.avgPercent)}</TableCell>
+	                                      <TableCell className="text-right">{t.resultCount}</TableCell>
+	                                    </TableRow>
+	                                  ))}
+	                                </TableBody>
+	                              </Table>
+	                            </div>
+	                          )}
+	                        </CardContent>
+	                      </Card>
+	                    </div>
+
+	                    <div className="space-y-2">
+	                      <div className="text-sm font-medium flex items-center gap-2">
+	                        <TrendingUp className="h-4 w-4" />
+	                        Trend (monthly)
+	                      </div>
+	                      {sectionDetail.trend.length === 0 ? (
+	                        <div className="text-sm text-muted-foreground">No data points.</div>
+	                      ) : (
+	                        <div className="rounded-md border">
+	                          <Table>
+	                            <TableHeader>
+	                              <TableRow>
+	                                <TableHead>Month</TableHead>
+	                                <TableHead className="text-right">Avg</TableHead>
+	                                <TableHead className="text-right">Results</TableHead>
+	                              </TableRow>
+	                            </TableHeader>
+	                            <TableBody>
+	                              {sectionDetail.trend.map((p) => (
+	                                <TableRow key={p.bucket}>
+	                                  <TableCell>{formatMonthLabel(p.bucket)}</TableCell>
+	                                  <TableCell className="text-right">{formatPercent(p.avgPercent)}</TableCell>
+	                                  <TableCell className="text-right">{p.resultCount}</TableCell>
+	                                </TableRow>
+	                              ))}
+	                            </TableBody>
+	                          </Table>
+	                        </div>
+	                      )}
+	                    </div>
+
+	                    <div className="space-y-2">
+	                      <div className="text-sm font-medium flex items-center gap-2">
+	                        <BookOpen className="h-4 w-4" />
+	                        Subjects
                       </div>
                       {sectionDetail.subjectStats.length === 0 ? (
                         <div className="text-sm text-muted-foreground">No subject results for this range.</div>
@@ -599,18 +722,24 @@ export function PerformanceDashboard({
                                   </TableCell>
                                   <TableCell className="text-right">{formatPercent(st.avgPercent)}</TableCell>
                                   <TableCell className="text-right">{st.resultCount}</TableCell>
-                                  <TableCell className="text-right">
-                                    {role === "admin" ? (
-                                      <Button asChild size="sm" variant="outline">
-                                        <Link href={`/admin/students/${st.studentUserId}`}>
-                                          Open <ExternalLink className="h-3.5 w-3.5" />
-                                        </Link>
-                                      </Button>
-                                    ) : (
-                                      <span className="text-xs text-muted-foreground">—</span>
-                                    )}
-                                  </TableCell>
-                                </TableRow>
+	                                  <TableCell className="text-right">
+	                                    {role === "admin" ? (
+	                                      <Button asChild size="sm" variant="outline">
+	                                        <Link href={`/admin/students/${st.studentUserId}`}>
+	                                          Open <ExternalLink className="h-3.5 w-3.5" />
+	                                        </Link>
+	                                      </Button>
+	                                    ) : role === "teacher" ? (
+	                                      <Button asChild size="sm" variant="outline">
+	                                        <Link href={`/teacher/analytics/students/${st.studentUserId}`}>
+	                                          View <ExternalLink className="h-3.5 w-3.5" />
+	                                        </Link>
+	                                      </Button>
+	                                    ) : (
+	                                      <span className="text-xs text-muted-foreground">—</span>
+	                                    )}
+	                                  </TableCell>
+	                                </TableRow>
                               ))}
                             </TableBody>
                           </Table>
