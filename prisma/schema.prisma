@@ -186,6 +186,7 @@ model StudentProfile {
   parents        ParentStudent[]
   attendances    Attendance[]
   results        AssessmentResult[]
+  questionResults AssessmentQuestionResult[]
   feeInvoices    FeeInvoice[]
   insights       StudentInsight[]
   eventApprovals EventApproval[]
@@ -539,6 +540,7 @@ model Assessment {
   term       Term?              @relation(fields: [termId], references: [id])
   createdBy  TeacherProfile     @relation(fields: [createdById], references: [id])
   results    AssessmentResult[]
+  questionResults AssessmentQuestionResult[]
   onlineTest OnlineTest? // Optional one-to-one relationship with online test
   questions  Question[] // Questions for this assessment
   files      AssessmentFile[] // Uploaded files (PDF, images, docs)
@@ -563,6 +565,25 @@ model AssessmentResult {
   @@unique([assessmentId, studentId])
   @@index([studentId])
   @@index([assessmentId])
+}
+
+model AssessmentQuestionResult {
+  id           String @id @default(cuid())
+  assessmentId String
+  studentId    String
+  questionId   String
+  marksAwarded Float
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assessment Assessment     @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  student    StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  question   Question       @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, studentId, questionId])
+  @@index([assessmentId])
+  @@index([studentId])
+  @@index([questionId])
 }
 
 // ==================== FEE MANAGEMENT ====================
@@ -825,6 +846,7 @@ model Question {
   topic      SubjectTopic?   @relation(fields: [topicId], references: [id], onDelete: SetNull)
   options    QuestionOption[] // For MCQ questions
   answers    StudentAnswer[]
+  questionResults AssessmentQuestionResult[]
 
   @@index([assessmentId])
   @@index([topicId])
