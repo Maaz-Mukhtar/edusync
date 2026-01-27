@@ -144,9 +144,58 @@ export async function GET(
         assessmentCount: number;
         resultCount: number;
         avgPercent: number | null;
+        medianPercent: number | null;
+        bucketBelow50: number;
+        bucket50to69: number;
+        bucket70to84: number;
+        bucket85plus: number;
       }>
     >(Prisma.sql`
       SELECT
+        COUNT(DISTINCT a.id)::int AS "assessmentCount",
+        COUNT(ar.id)::int AS "resultCount",
+        AVG((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) AS "avgPercent",
+        percentile_cont(0.5) WITHIN GROUP (
+          ORDER BY (ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100
+        ) AS "medianPercent",
+        SUM(
+          CASE WHEN ((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) < 50 THEN 1 ELSE 0 END
+        )::int AS "bucketBelow50",
+        SUM(
+          CASE
+            WHEN ((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) >= 50
+              AND ((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) < 70
+            THEN 1 ELSE 0
+          END
+        )::int AS "bucket50to69",
+        SUM(
+          CASE
+            WHEN ((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) >= 70
+              AND ((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) < 85
+            THEN 1 ELSE 0
+          END
+        )::int AS "bucket70to84",
+        SUM(
+          CASE WHEN ((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) >= 85 THEN 1 ELSE 0 END
+        )::int AS "bucket85plus"
+      FROM "Assessment" a
+      LEFT JOIN "AssessmentResult" ar ON ar."assessmentId" = a.id
+      WHERE a."sectionId" = ${sectionId}
+        AND a."date" >= ${from}
+        AND a."date" <= ${to}
+        ${subjectFilterSql}
+    `);
+
+    const typeStats = await prisma.$queryRaw<
+      Array<{
+        type: string;
+        assessmentCount: number;
+        resultCount: number;
+        avgPercent: number | null;
+      }>
+    >(Prisma.sql`
+      SELECT
+        a."type"::text AS "type",
         COUNT(DISTINCT a.id)::int AS "assessmentCount",
         COUNT(ar.id)::int AS "resultCount",
         AVG((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) AS "avgPercent"
@@ -156,6 +205,31 @@ export async function GET(
         AND a."date" >= ${from}
         AND a."date" <= ${to}
         ${subjectFilterSql}
+      GROUP BY a."type"
+      ORDER BY a."type" ASC
+    `);
+
+    const trend = await prisma.$queryRaw<
+      Array<{
+        bucket: Date;
+        assessmentCount: number;
+        resultCount: number;
+        avgPercent: number | null;
+      }>
+    >(Prisma.sql`
+      SELECT
+        date_trunc('month', a."date")::date AS "bucket",
+        COUNT(DISTINCT a.id)::int AS "assessmentCount",
+        COUNT(ar.id)::int AS "resultCount",
+        AVG((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) AS "avgPercent"
+      FROM "Assessment" a
+      LEFT JOIN "AssessmentResult" ar ON ar."assessmentId" = a.id
+      WHERE a."sectionId" = ${sectionId}
+        AND a."date" >= ${from}
+        AND a."date" <= ${to}
+        ${subjectFilterSql}
+      GROUP BY date_trunc('month', a."date")::date
+      ORDER BY date_trunc('month', a."date")::date ASC
     `);
 
     return NextResponse.json({
@@ -171,8 +245,22 @@ export async function GET(
         class: section.class,
         studentCount: section._count.students,
       },
-      overall: overall[0] ?? { assessmentCount: 0, resultCount: 0, avgPercent: null },
+      overall: overall[0] ?? {
+        assessmentCount: 0,
+        resultCount: 0,
+        avgPercent: null,
+        medianPercent: null,
+        bucketBelow50: 0,
+        bucket50to69: 0,
+        bucket70to84: 0,
+        bucket85plus: 0,
+      },
       subjectStats,
+      typeStats,
+      trend: trend.map((t) => ({
+        ...t,
+        bucket: t.bucket.toISOString(),
+      })),
       studentStats,
     });
   } catch (error) {

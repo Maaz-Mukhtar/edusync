@@ -57,6 +57,11 @@ export async function GET(request: NextRequest) {
         assessmentCount: number;
         resultCount: number;
         avgPercent: number | null;
+        medianPercent: number | null;
+        bucketBelow50: number;
+        bucket50to69: number;
+        bucket70to84: number;
+        bucket85plus: number;
       }>
     >(Prisma.sql`
       SELECT
@@ -69,31 +74,50 @@ export async function GET(request: NextRequest) {
           FROM "StudentProfile" sp
           WHERE sp."sectionId" = s.id
         ) AS "studentCount",
-        (
-          SELECT COUNT(*)::int
-          FROM "Assessment" a
-          WHERE a."sectionId" = s.id
-            AND a."date" >= ${from}
-            AND a."date" <= ${to}
-        ) AS "assessmentCount",
-        (
-          SELECT COUNT(ar.id)::int
-          FROM "Assessment" a
-          INNER JOIN "AssessmentResult" ar ON ar."assessmentId" = a.id
-          WHERE a."sectionId" = s.id
-            AND a."date" >= ${from}
-            AND a."date" <= ${to}
-        ) AS "resultCount",
-        (
-          SELECT AVG((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100)
-          FROM "Assessment" a
-          INNER JOIN "AssessmentResult" ar ON ar."assessmentId" = a.id
-          WHERE a."sectionId" = s.id
-            AND a."date" >= ${from}
-            AND a."date" <= ${to}
-        ) AS "avgPercent"
+        COALESCE(stats."assessmentCount", 0)::int AS "assessmentCount",
+        COALESCE(stats."resultCount", 0)::int AS "resultCount",
+        stats."avgPercent" AS "avgPercent",
+        stats."medianPercent" AS "medianPercent",
+        COALESCE(stats."bucketBelow50", 0)::int AS "bucketBelow50",
+        COALESCE(stats."bucket50to69", 0)::int AS "bucket50to69",
+        COALESCE(stats."bucket70to84", 0)::int AS "bucket70to84",
+        COALESCE(stats."bucket85plus", 0)::int AS "bucket85plus"
       FROM "Section" s
       INNER JOIN "Class" c ON c.id = s."classId"
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(DISTINCT a.id)::int AS "assessmentCount",
+          COUNT(ar.id)::int AS "resultCount",
+          AVG((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) AS "avgPercent",
+          percentile_cont(0.5) WITHIN GROUP (
+            ORDER BY (ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100
+          ) AS "medianPercent",
+          SUM(
+            CASE WHEN ((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) < 50 THEN 1 ELSE 0 END
+          )::int AS "bucketBelow50",
+          SUM(
+            CASE
+              WHEN ((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) >= 50
+                AND ((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) < 70
+              THEN 1 ELSE 0
+            END
+          )::int AS "bucket50to69",
+          SUM(
+            CASE
+              WHEN ((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) >= 70
+                AND ((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) < 85
+              THEN 1 ELSE 0
+            END
+          )::int AS "bucket70to84",
+          SUM(
+            CASE WHEN ((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) >= 85 THEN 1 ELSE 0 END
+          )::int AS "bucket85plus"
+        FROM "Assessment" a
+        INNER JOIN "AssessmentResult" ar ON ar."assessmentId" = a.id
+        WHERE a."sectionId" = s.id
+          AND a."date" >= ${from}
+          AND a."date" <= ${to}
+      ) stats ON TRUE
       WHERE c."schoolId" = ${schoolId}
       ${classFilterSql}
       ${sectionFilterSql}
