@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { revalidateParentsForStudents, revalidateStudents, revalidateTeachers } from "@/lib/cache-revalidate";
+import { computeTopicScoresV1 } from "@/lib/analytics/topic-scores";
 
 // POST /api/student/tests/[testId]/attempt/submit - Submit the test
 export async function POST(
@@ -58,6 +59,7 @@ export async function POST(
     let totalScore = 0;
     let maxScore = 0;
     let hasShortAnswers = false;
+    const marksByQuestionId = new Map<string, number>();
 
     for (const answer of attempt.answers) {
       maxScore += answer.question.marks;
@@ -80,6 +82,7 @@ export async function POST(
           });
 
           totalScore += marksAwarded;
+          marksByQuestionId.set(answer.question.id, marksAwarded);
         } else {
           // No answer selected - mark as incorrect
           await prisma.studentAnswer.update({
@@ -90,6 +93,7 @@ export async function POST(
               gradedAt: new Date(),
             },
           });
+          marksByQuestionId.set(answer.question.id, 0);
         }
       } else {
         // Short answer - needs manual grading
@@ -124,6 +128,33 @@ export async function POST(
 
     // If fully graded (no short answers), sync with AssessmentResult
     if (!hasShortAnswers) {
+      const topicIds = Array.from(
+        new Set(
+          attempt.answers
+            .map((a) => a.question.topicId)
+            .filter((id): id is string => typeof id === "string" && id.length > 0)
+        )
+      );
+
+      const topicNameById = new Map<string, string>();
+      if (topicIds.length > 0) {
+        const topics = await prisma.subjectTopic.findMany({
+          where: { id: { in: topicIds } },
+          select: { id: true, name: true },
+        });
+        for (const t of topics) topicNameById.set(t.id, t.name);
+      }
+
+      const topicScores = computeTopicScoresV1({
+        questions: attempt.answers.map((a) => ({
+          id: a.question.id,
+          marks: a.question.marks,
+          topicId: a.question.topicId ?? null,
+          topicName: a.question.topicId ? topicNameById.get(a.question.topicId) : null,
+        })),
+        marksByQuestionId,
+      });
+
       await prisma.assessmentResult.upsert({
         where: {
           assessmentId_studentId: {
@@ -134,12 +165,14 @@ export async function POST(
         update: {
           marksObtained: totalScore,
           remarks: `Online test completed. Score: ${totalScore}/${maxScore} (${percentage.toFixed(1)}%)`,
+          topicScores,
         },
         create: {
           assessmentId: attempt.onlineTest.assessmentId,
           studentId: studentProfile.id,
           marksObtained: totalScore,
           remarks: `Online test completed. Score: ${totalScore}/${maxScore} (${percentage.toFixed(1)}%)`,
+          topicScores,
         },
       });
 

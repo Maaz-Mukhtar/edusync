@@ -12,6 +12,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:headstart": "tsx prisma/seed-headstart.ts",
+    "db:backfill:topic-scores": "tsx scripts/backfill-topic-scores.ts",
     "db:studio": "prisma studio",
     "test:perf": "PLAYWRIGHT_SCHOOL_SUBDOMAIN=sns npx playwright test tests/performance.spec.ts",
     "test:perf:ui": "PLAYWRIGHT_SCHOOL_SUBDOMAIN=sns npx playwright test tests/performance.spec.ts --ui",

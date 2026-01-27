@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { gradeAnswerSchema } from "@/lib/validations/online-tests";
 import { z } from "zod";
 import { revalidateParentsForStudents, revalidateStudents, revalidateTeachers } from "@/lib/cache-revalidate";
+import { computeTopicScoresV1 } from "@/lib/analytics/topic-scores";
 
 // PATCH /api/teacher/online-tests/[testId]/attempts/[attemptId]/grade - Grade answers
 export async function PATCH(
@@ -161,6 +162,32 @@ export async function PATCH(
 
     // If fully graded, sync with AssessmentResult for gradebook
     if (allGraded) {
+      const marksByQuestionId = new Map<string, number>();
+      const topicIds = new Set<string>();
+      for (const a of allAnswers) {
+        marksByQuestionId.set(a.questionId, a.marksAwarded ?? 0);
+        if (a.question.topicId) topicIds.add(a.question.topicId);
+      }
+
+      const topicNameById = new Map<string, string>();
+      if (topicIds.size > 0) {
+        const topics = await prisma.subjectTopic.findMany({
+          where: { id: { in: Array.from(topicIds) } },
+          select: { id: true, name: true },
+        });
+        for (const t of topics) topicNameById.set(t.id, t.name);
+      }
+
+      const topicScores = computeTopicScoresV1({
+        questions: allAnswers.map((a) => ({
+          id: a.questionId,
+          marks: a.question.marks,
+          topicId: a.question.topicId ?? null,
+          topicName: a.question.topicId ? topicNameById.get(a.question.topicId) : null,
+        })),
+        marksByQuestionId,
+      });
+
       await prisma.assessmentResult.upsert({
         where: {
           assessmentId_studentId: {
@@ -171,12 +198,14 @@ export async function PATCH(
         update: {
           marksObtained: totalScore,
           remarks: `Online test completed. Score: ${totalScore}/${maxScore} (${percentage.toFixed(1)}%)`,
+          topicScores,
         },
         create: {
           assessmentId: onlineTest.assessmentId,
           studentId: attempt.studentId,
           marksObtained: totalScore,
           remarks: `Online test completed. Score: ${totalScore}/${maxScore} (${percentage.toFixed(1)}%)`,
+          topicScores,
         },
       });
     }
