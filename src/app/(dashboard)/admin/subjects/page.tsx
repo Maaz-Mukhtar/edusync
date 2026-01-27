@@ -12,6 +12,7 @@ import {
   ChevronRight,
   ArrowLeft,
   UserPlus,
+  ListChecks,
   X,
   GraduationCap,
 } from "lucide-react";
@@ -61,6 +62,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { SubjectTopicsDialog } from "@/components/topics/subject-topics-dialog";
 
 interface Class {
   id: string;
@@ -154,6 +156,10 @@ export default function SubjectsPage() {
   const [selectedSubjectForTeachers, setSelectedSubjectForTeachers] = useState<Subject | null>(null);
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>("");
   const [addingTeacher, setAddingTeacher] = useState(false);
+
+  // Topic management states
+  const [topicsDialogOpen, setTopicsDialogOpen] = useState(false);
+  const [selectedSubjectForTopics, setSelectedSubjectForTopics] = useState<Subject | null>(null);
 
   // Bulk subjects states
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
@@ -373,6 +379,11 @@ export default function SubjectsPage() {
     setSelectedSubjectForTeachers(subject);
     setTeacherDialogOpen(true);
     await fetchAllTeachers();
+  };
+
+  const openTopicsDialog = (subject: Subject) => {
+    setSelectedSubjectForTopics(subject);
+    setTopicsDialogOpen(true);
   };
 
   const handleAddTeacher = async () => {
@@ -924,6 +935,10 @@ export default function SubjectsPage() {
                         <UserPlus className="mr-2 h-4 w-4" />
                         Manage Teachers
                       </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openTopicsDialog(subject)}>
+                        <ListChecks className="mr-2 h-4 w-4" />
+                        Manage Topics
+                      </DropdownMenuItem>
                       <DropdownMenuItem
                         className="text-destructive focus:text-destructive"
                         onClick={() => openDeleteDialog(subject)}
@@ -1020,6 +1035,16 @@ export default function SubjectsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <SubjectTopicsDialog
+        open={topicsDialogOpen && !!selectedSubjectForTopics}
+        onOpenChange={(open) => {
+          setTopicsDialogOpen(open);
+          if (!open) setSelectedSubjectForTopics(null);
+        }}
+        subjectId={selectedSubjectForTopics?.id ?? ""}
+        mode="admin"
+      />
 
       {/* Delete Confirmation */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

@@ -57,6 +57,16 @@ enum InvoiceStatus {
   CANCELLED
 }
 
+enum TopicSource {
+  ADMIN
+  TEACHER
+}
+
+enum TopicStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 enum EnrollmentStatus {
   ACTIVE // Currently enrolled
   PROMOTED // Promoted to next grade
@@ -201,6 +211,7 @@ model TeacherProfile {
   assessments      Assessment[]
   conversations    Conversation[]
   timetableSlots   TimetableSlot[]
+  createdTopics    SubjectTopic[]
 }
 
 model ParentProfile {
@@ -331,9 +342,33 @@ model Subject {
   timetable       TimetableSlot[]
   assessments     Assessment[]
   sectionTeachers SectionSubjectTeacher[] // Teachers assigned to teach this subject in specific sections
+  topics          SubjectTopic[]
 
   @@unique([classId, name])
   @@index([classId])
+}
+
+model SubjectTopic {
+  id                String      @id @default(cuid())
+  subjectId          String
+  name               String
+  nameNormalized     String
+  parentTopicId      String?
+  source             TopicSource
+  status             TopicStatus @default(ACTIVE)
+  createdByTeacherId String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  subject    Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  parent     SubjectTopic?  @relation("TopicTree", fields: [parentTopicId], references: [id])
+  children   SubjectTopic[] @relation("TopicTree")
+  createdBy  TeacherProfile? @relation(fields: [createdByTeacherId], references: [id], onDelete: SetNull)
+
+  @@unique([subjectId, nameNormalized])
+  @@index([subjectId])
+  @@index([parentTopicId])
+  @@index([createdByTeacherId])
 }
 
 // ==================== JUNCTION TABLES ====================
