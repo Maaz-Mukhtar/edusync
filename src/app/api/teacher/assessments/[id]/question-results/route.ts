@@ -153,6 +153,8 @@ export async function PUT(
 
     const questionById = new Map(assessment.questions.map((q) => [q.id, q]));
     const studentIdsInSection = new Set(assessment.section.students.map((s) => s.id));
+    const computedTotalMarks = assessment.questions.reduce((sum, q) => sum + q.marks, 0);
+    const totalForGrade = computedTotalMarks > 0 ? computedTotalMarks : assessment.totalMarks;
 
     for (const entry of validated.entries) {
       if (!studentIdsInSection.has(entry.studentId)) {
@@ -176,6 +178,15 @@ export async function PUT(
     const questionCount = assessment.questions.length;
 
     await prisma.$transaction(async (tx) => {
+      // If this assessment has explicit questions, keep Assessment.totalMarks in sync with the sum of question marks.
+      // This avoids >100% percentages and prevents grading saves from failing when totals drift.
+      if (questionCount > 0 && computedTotalMarks > 0 && assessment.totalMarks !== computedTotalMarks) {
+        await tx.assessment.update({
+          where: { id: assessmentId },
+          data: { totalMarks: computedTotalMarks },
+        });
+      }
+
       await Promise.all(
         validated.entries.map(async (entry) => {
           if (entry.marksAwarded === null) {
@@ -232,8 +243,8 @@ export async function PUT(
           continue;
         }
 
-        if (t.sum > assessment.totalMarks) {
-          throw new Error(`Total marks cannot exceed ${assessment.totalMarks}`);
+        if (t.sum - totalForGrade > 0.000001) {
+          throw new Error(`Total marks cannot exceed ${totalForGrade}`);
         }
 
         const topicScores = computeTopicScoresV1({
@@ -245,14 +256,14 @@ export async function PUT(
           where: { assessmentId_studentId: { assessmentId, studentId } },
           update: {
             marksObtained: t.sum,
-            grade: calculateGradeFromMarks(t.sum, assessment.totalMarks),
+            grade: calculateGradeFromMarks(t.sum, totalForGrade),
             topicScores,
           },
           create: {
             assessmentId,
             studentId,
             marksObtained: t.sum,
-            grade: calculateGradeFromMarks(t.sum, assessment.totalMarks),
+            grade: calculateGradeFromMarks(t.sum, totalForGrade),
             topicScores,
           },
         });

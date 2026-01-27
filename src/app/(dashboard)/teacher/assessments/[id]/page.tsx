@@ -317,6 +317,8 @@ export default function AssessmentDetailPage({ params }: { params: Promise<{ id:
 
   const gradedCount = assessment.students.filter((s) => s.marksObtained !== null).length;
   const hasQuestions = assessment.questions.length > 0;
+  const computedTotalMarks = assessment.questions.reduce((sum, q) => sum + q.marks, 0);
+  const totalForDisplay = hasQuestions && computedTotalMarks > 0 ? computedTotalMarks : assessment.totalMarks;
   const hasUnsavedAnyQuestionChanges =
     hasQuestions && assessment.students.some((s) => hasUnsavedQuestionChanges(s.studentId, assessment.questions));
 
@@ -387,7 +389,7 @@ export default function AssessmentDetailPage({ params }: { params: Promise<{ id:
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{assessment.totalMarks}</div>
+            <div className="text-2xl font-bold">{totalForDisplay}</div>
           </CardContent>
         </Card>
 
@@ -467,8 +469,8 @@ export default function AssessmentDetailPage({ params }: { params: Promise<{ id:
                     const studentMap = localQuestionMarks.get(student.studentId);
                     const isComplete = assessment.questions.every((q) => studentMap?.has(q.id));
                     const sum = assessment.questions.reduce((acc, q) => acc + (studentMap?.get(q.id) ?? 0), 0);
-                    const percentage = isComplete ? (sum / assessment.totalMarks) * 100 : null;
-                    const grade = isComplete ? calculateGradeFromMarks(sum, assessment.totalMarks) : null;
+                    const percentage = isComplete ? (sum / totalForDisplay) * 100 : null;
+                    const grade = isComplete ? calculateGradeFromMarks(sum, totalForDisplay) : null;
                     const hasUnsaved = hasUnsavedQuestionChanges(student.studentId, assessment.questions);
                     const hasSavedProgress = (initialQuestionMarks.get(student.studentId)?.size ?? 0) > 0;
 
