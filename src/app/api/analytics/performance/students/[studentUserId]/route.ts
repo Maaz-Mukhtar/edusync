@@ -8,8 +8,9 @@ import { resolveAnalyticsPeriodOrError } from "@/lib/analytics/resolve-period";
 //
 // Phase 1:
 // - Student: only self (`me` or own user id)
+// - Parent: only linked children (by user id)
 //
-// Later tickets may extend access (parent/teacher/admin).
+// Later tickets may extend access (teacher/admin).
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ studentUserId: string }> }
@@ -18,14 +19,17 @@ export async function GET(
     const session = await auth();
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (session.user.role !== "STUDENT") {
+    if (!["STUDENT", "PARENT"].includes(session.user.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { studentUserId } = await params;
     const targetUserId = studentUserId === "me" ? session.user.id : studentUserId;
-    if (targetUserId !== session.user.id) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (session.user.role === "STUDENT") {
+      if (targetUserId !== session.user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    } else {
+      // PARENT
+      if (studentUserId === "me") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -35,14 +39,25 @@ export async function GET(
     const { from, to } = range;
 
     const student = await prisma.studentProfile.findFirst({
-      where: { userId: targetUserId, user: { schoolId: session.user.schoolId } },
+      where: {
+        userId: targetUserId,
+        user: { schoolId: session.user.schoolId },
+        ...(session.user.role === "PARENT"
+          ? { parents: { some: { parent: { userId: session.user.id } } } }
+          : {}),
+      },
       select: {
         id: true,
         user: { select: { id: true, firstName: true, lastName: true } },
         section: { select: { id: true, name: true, class: { select: { id: true, name: true } } } },
       },
     });
-    if (!student) return NextResponse.json({ error: "Student profile not found" }, { status: 404 });
+    if (!student) {
+      return NextResponse.json(
+        { error: session.user.role === "PARENT" ? "Forbidden" : "Student profile not found" },
+        { status: session.user.role === "PARENT" ? 403 : 404 }
+      );
+    }
 
     const overall = await prisma.$queryRaw<
       Array<{
@@ -198,4 +213,3 @@ export async function GET(
     return NextResponse.json({ error: "Failed to fetch student analytics" }, { status: 500 });
   }
 }
-

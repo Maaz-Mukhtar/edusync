@@ -14,6 +14,7 @@ const CACHE_REVALIDATE_SECONDS = 60;
 export interface ChildInfo {
   id: string;
   studentId: string;
+  studentUserId: string;
   name: string;
   className: string;
   sectionName: string;
@@ -66,6 +67,7 @@ export async function getParentProfile() {
   const children: ChildInfo[] = parentProfile.children.map((c) => ({
     id: c.id,
     studentId: c.student.id,
+    studentUserId: c.student.userId,
     name: `${c.student.user.firstName} ${c.student.user.lastName}`,
     className: c.student.section.class.name,
     sectionName: c.student.section.name,
