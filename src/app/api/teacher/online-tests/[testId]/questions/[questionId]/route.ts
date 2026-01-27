@@ -37,6 +37,7 @@ export async function GET(
           createdById: teacherProfile.id,
         },
       },
+      select: { id: true, status: true, assessmentId: true, assessment: { select: { subjectId: true } } },
     });
 
     if (!onlineTest) {
@@ -64,6 +65,7 @@ export async function GET(
         id: question.id,
         type: question.type,
         questionText: question.questionText,
+        topicId: question.topicId,
         marks: question.marks,
         orderIndex: question.orderIndex,
         explanation: question.explanation,
@@ -117,6 +119,7 @@ export async function PUT(
           createdById: teacherProfile.id,
         },
       },
+      select: { id: true, status: true, assessmentId: true, assessment: { select: { subjectId: true } } },
     });
 
     if (!onlineTest) {
@@ -147,6 +150,16 @@ export async function PUT(
     const body = await request.json();
     const validatedData = updateQuestionSchema.parse(body);
 
+    if (validatedData.topicId) {
+      const topic = await prisma.subjectTopic.findFirst({
+        where: { id: validatedData.topicId, subjectId: onlineTest.assessment.subjectId, status: "ACTIVE" },
+        select: { id: true },
+      });
+      if (!topic) {
+        return NextResponse.json({ error: "Invalid topicId for this subject" }, { status: 400 });
+      }
+    }
+
     // Update question
     const updatedQuestion = await prisma.$transaction(async (tx) => {
       // Update the question itself
@@ -154,6 +167,7 @@ export async function PUT(
         where: { id: questionId },
         data: {
           ...(validatedData.questionText && { questionText: validatedData.questionText }),
+          ...(validatedData.topicId !== undefined && { topicId: validatedData.topicId }),
           ...(validatedData.marks && { marks: validatedData.marks }),
           ...(validatedData.orderIndex !== undefined && { orderIndex: validatedData.orderIndex }),
           ...(validatedData.explanation !== undefined && { explanation: validatedData.explanation }),
@@ -196,6 +210,7 @@ export async function PUT(
         id: questionWithOptions!.id,
         type: questionWithOptions!.type,
         questionText: questionWithOptions!.questionText,
+        topicId: questionWithOptions!.topicId,
         marks: questionWithOptions!.marks,
         orderIndex: questionWithOptions!.orderIndex,
         explanation: questionWithOptions!.explanation,

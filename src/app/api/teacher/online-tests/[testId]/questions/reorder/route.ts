@@ -96,6 +96,7 @@ export async function PUT(
         id: q.id,
         type: q.type,
         questionText: q.questionText,
+        topicId: q.topicId,
         marks: q.marks,
         orderIndex: q.orderIndex,
         explanation: q.explanation,

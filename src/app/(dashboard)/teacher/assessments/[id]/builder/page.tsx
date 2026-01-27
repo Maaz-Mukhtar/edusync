@@ -69,10 +69,20 @@ export default async function BuilderPage({ params }: PageProps) {
     },
     hasOnlineTest: !!assessment.onlineTest,
     onlineTestStatus: assessment.onlineTest?.status || null,
+    // Include ACTIVE + ARCHIVED topics so historical questions can still render.
+    // Archived topics are disabled in the question builder when tagging new questions.
+    topics: (
+      await prisma.subjectTopic.findMany({
+        where: { subjectId: assessment.subject.id },
+        select: { id: true, name: true, source: true, status: true },
+        orderBy: [{ status: "asc" }, { source: "asc" }, { name: "asc" }],
+      })
+    ).map((t) => ({ id: t.id, name: t.name, source: t.source, status: t.status })),
     questions: assessment.questions.map((q) => ({
       id: q.id,
       type: q.type as "MCQ" | "SHORT_ANSWER",
       questionText: q.questionText,
+      topicId: q.topicId,
       marks: q.marks,
       orderIndex: q.orderIndex,
       explanation: q.explanation,

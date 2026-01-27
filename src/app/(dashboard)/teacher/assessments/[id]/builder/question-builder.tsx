@@ -34,7 +34,6 @@ import {
   Edit,
   Trash2,
   GripVertical,
-  Save,
   Printer,
   ListChecks,
   X,
@@ -54,6 +53,7 @@ interface Question {
   id: string;
   type: QuestionType;
   questionText: string;
+  topicId: string | null;
   marks: number;
   orderIndex: number;
   explanation: string | null;
@@ -78,6 +78,7 @@ interface AssessmentData {
   };
   hasOnlineTest: boolean;
   onlineTestStatus: string | null;
+  topics: Array<{ id: string; name: string; source: "ADMIN" | "TEACHER"; status: "ACTIVE" | "ARCHIVED" }>;
   questions: Question[];
 }
 
@@ -95,6 +96,7 @@ const typeColors: Record<string, string> = {
 export default function QuestionBuilder({ initialData }: QuestionBuilderProps) {
   const router = useRouter();
   const [questions, setQuestions] = useState<Question[]>(initialData.questions);
+  const [topics, setTopics] = useState(initialData.topics);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -106,6 +108,7 @@ export default function QuestionBuilder({ initialData }: QuestionBuilderProps) {
   const [questionForm, setQuestionForm] = useState({
     type: "MCQ" as QuestionType,
     questionText: "",
+    topicId: "none",
     marks: 1,
     explanation: "",
   });
@@ -118,10 +121,25 @@ export default function QuestionBuilder({ initialData }: QuestionBuilderProps) {
 
   const isLocked = initialData.hasOnlineTest && initialData.onlineTestStatus === "PUBLISHED";
 
+  const refreshTopics = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/subjects/${initialData.subject.id}/topics`);
+      const json = (await res.json()) as {
+        topics?: Array<{ id: string; name: string; source: "ADMIN" | "TEACHER"; status: "ACTIVE" | "ARCHIVED" }>;
+      };
+      if (!res.ok) return;
+      if (!Array.isArray(json.topics)) return;
+      setTopics(json.topics.map((t) => ({ id: t.id, name: t.name, source: t.source, status: t.status })));
+    } catch {
+      // best-effort (dialog itself shows errors)
+    }
+  }, [initialData.subject.id]);
+
   const resetForm = () => {
     setQuestionForm({
       type: "MCQ",
       questionText: "",
+      topicId: "none",
       marks: 1,
       explanation: "",
     });
@@ -144,6 +162,7 @@ export default function QuestionBuilder({ initialData }: QuestionBuilderProps) {
     setQuestionForm({
       type: question.type,
       questionText: question.questionText,
+      topicId: question.topicId ?? "none",
       marks: question.marks,
       explanation: question.explanation || "",
     });
@@ -184,6 +203,7 @@ export default function QuestionBuilder({ initialData }: QuestionBuilderProps) {
     try {
       const payload = {
         ...questionForm,
+        topicId: questionForm.topicId === "none" ? null : questionForm.topicId,
         options: questionForm.type === "MCQ" ? options.filter((o) => o.optionText.trim()) : [],
       };
 
@@ -294,7 +314,13 @@ export default function QuestionBuilder({ initialData }: QuestionBuilderProps) {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setTopicsDialogOpen(true)}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              void refreshTopics();
+              setTopicsDialogOpen(true);
+            }}
+          >
             <ListChecks className="h-4 w-4 mr-2" />
             Topics
           </Button>
@@ -309,7 +335,10 @@ export default function QuestionBuilder({ initialData }: QuestionBuilderProps) {
 
       <SubjectTopicsDialog
         open={topicsDialogOpen}
-        onOpenChange={setTopicsDialogOpen}
+        onOpenChange={(next) => {
+          setTopicsDialogOpen(next);
+          if (!next) void refreshTopics();
+        }}
         subjectId={initialData.subject.id}
         mode="teacher"
       />
@@ -522,6 +551,33 @@ export default function QuestionBuilder({ initialData }: QuestionBuilderProps) {
                 placeholder="Enter your question..."
                 rows={3}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Topic</Label>
+              <Select
+                value={questionForm.topicId}
+                onValueChange={(v) => setQuestionForm({ ...questionForm, topicId: v })}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Uncategorized" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Uncategorized</SelectItem>
+                  {topics.map((t) => (
+                    <SelectItem key={t.id} value={t.id} disabled={t.status === "ARCHIVED"}>
+                      <span className="flex w-full items-center justify-between gap-2">
+                        <span className="truncate">{t.name}</span>
+                        <span className="flex items-center gap-2">
+                          <Badge variant={t.source === "ADMIN" ? "default" : "secondary"}>{t.source}</Badge>
+                          {t.status === "ARCHIVED" ? <Badge variant="outline">Archived</Badge> : null}
+                        </span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="text-xs text-muted-foreground">Archived topics can’t be used for new questions.</div>
             </div>
 
             {questionForm.type === "MCQ" && (
