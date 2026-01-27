@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { revalidateParentsForStudents, revalidateStudents, revalidateTeachers } from "@/lib/cache-revalidate";
 import { calculateGradeFromMarks } from "@/lib/grades";
+import { computeTopicScoresV1 } from "@/lib/analytics/topic-scores";
 
 const upsertQuestionResultsSchema = z.object({
   entries: z.array(
@@ -136,7 +137,15 @@ export async function PUT(
       where: { id: assessmentId, createdById: teacherProfile.id },
       include: {
         section: { select: { students: { select: { id: true } } } },
-        questions: { select: { id: true, type: true, marks: true } },
+        questions: {
+          select: {
+            id: true,
+            type: true,
+            marks: true,
+            topicId: true,
+            topic: { select: { name: true } },
+          },
+        },
       },
     });
 
@@ -199,14 +208,22 @@ export async function PUT(
 
       const results = await tx.assessmentQuestionResult.findMany({
         where: { assessmentId, studentId: { in: affectedStudentIds } },
-        select: { studentId: true, marksAwarded: true },
+        select: { studentId: true, questionId: true, marksAwarded: true },
       });
 
-      const totals = new Map<string, { count: number; sum: number }>();
+      const totals = new Map<string, { count: number; sum: number; marksByQuestionId: Map<string, number> }>();
       for (const r of results) {
-        const current = totals.get(r.studentId) ?? { count: 0, sum: 0 };
-        totals.set(r.studentId, { count: current.count + 1, sum: current.sum + r.marksAwarded });
+        const current = totals.get(r.studentId) ?? { count: 0, sum: 0, marksByQuestionId: new Map<string, number>() };
+        current.marksByQuestionId.set(r.questionId, r.marksAwarded);
+        totals.set(r.studentId, { count: current.count + 1, sum: current.sum + r.marksAwarded, marksByQuestionId: current.marksByQuestionId });
       }
+
+      const questionsForScores = assessment.questions.map((q) => ({
+        id: q.id,
+        marks: q.marks,
+        topicId: q.topicId ?? null,
+        topicName: q.topic?.name ?? null,
+      }));
 
       for (const studentId of affectedStudentIds) {
         const t = totals.get(studentId);
@@ -219,17 +236,24 @@ export async function PUT(
           throw new Error(`Total marks cannot exceed ${assessment.totalMarks}`);
         }
 
+        const topicScores = computeTopicScoresV1({
+          questions: questionsForScores,
+          marksByQuestionId: t.marksByQuestionId,
+        });
+
         await tx.assessmentResult.upsert({
           where: { assessmentId_studentId: { assessmentId, studentId } },
           update: {
             marksObtained: t.sum,
             grade: calculateGradeFromMarks(t.sum, assessment.totalMarks),
+            topicScores,
           },
           create: {
             assessmentId,
             studentId,
             marksObtained: t.sum,
             grade: calculateGradeFromMarks(t.sum, assessment.totalMarks),
+            topicScores,
           },
         });
       }

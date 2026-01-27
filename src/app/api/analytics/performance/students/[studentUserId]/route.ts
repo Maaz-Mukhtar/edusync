@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { getTeacherAnalyticsAccess } from "@/app/api/analytics/_utils";
 import { resolveAnalyticsPeriodOrError } from "@/lib/analytics/resolve-period";
 
 // GET /api/analytics/performance/students/[studentUserId]
@@ -19,7 +20,7 @@ export async function GET(
     const session = await auth();
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (!["STUDENT", "PARENT"].includes(session.user.role)) {
+    if (!["STUDENT", "PARENT", "TEACHER", "ADMIN"].includes(session.user.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -27,8 +28,13 @@ export async function GET(
     const targetUserId = studentUserId === "me" ? session.user.id : studentUserId;
     if (session.user.role === "STUDENT") {
       if (targetUserId !== session.user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    } else {
-      // PARENT
+    }
+
+    if (session.user.role === "PARENT") {
+      if (studentUserId === "me") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    if (["TEACHER", "ADMIN"].includes(session.user.role)) {
       if (studentUserId === "me") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -42,9 +48,7 @@ export async function GET(
       where: {
         userId: targetUserId,
         user: { schoolId: session.user.schoolId },
-        ...(session.user.role === "PARENT"
-          ? { parents: { some: { parent: { userId: session.user.id } } } }
-          : {}),
+        ...(session.user.role === "PARENT" ? { parents: { some: { parent: { userId: session.user.id } } } } : {}),
       },
       select: {
         id: true,
@@ -53,13 +57,26 @@ export async function GET(
       },
     });
     if (!student) {
-      return NextResponse.json(
-        { error: session.user.role === "PARENT" ? "Forbidden" : "Student profile not found" },
-        { status: session.user.role === "PARENT" ? 403 : 404 }
-      );
+      if (session.user.role === "PARENT") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      return NextResponse.json({ error: "Student profile not found" }, { status: 404 });
     }
 
-    const overall = await prisma.$queryRaw<
+    let subjectFilterSql = Prisma.empty;
+    if (session.user.role === "TEACHER") {
+      const access = await getTeacherAnalyticsAccess(session.user.id, session.user.schoolId);
+      if (!access) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      if (!access.allowedSectionIds.includes(student.section.id)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+      if (!access.classTeacherSectionIds.has(student.section.id)) {
+        const subjectIds = access.subjectIdsBySection.get(student.section.id);
+        if (!subjectIds || subjectIds.size === 0) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        subjectFilterSql = Prisma.sql`AND a."subjectId" IN (${Prisma.join(Array.from(subjectIds))})`;
+      }
+    }
+
+	    const overall = await prisma.$queryRaw<
       Array<{
         resultCount: number;
         assessmentCount: number;
@@ -74,12 +91,13 @@ export async function GET(
         percentile_cont(0.5) WITHIN GROUP (
           ORDER BY (ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100
         ) AS "medianPercent"
-      FROM "AssessmentResult" ar
-      INNER JOIN "Assessment" a ON a.id = ar."assessmentId"
-      WHERE ar."studentId" = ${student.id}
-        AND a."date" >= ${from}
-        AND a."date" <= ${to}
-    `);
+	      FROM "AssessmentResult" ar
+	      INNER JOIN "Assessment" a ON a.id = ar."assessmentId"
+	      WHERE ar."studentId" = ${student.id}
+	        AND a."date" >= ${from}
+	        AND a."date" <= ${to}
+	        ${subjectFilterSql}
+	    `);
 
     const subjectStats = await prisma.$queryRaw<
       Array<{
@@ -99,12 +117,13 @@ export async function GET(
       FROM "AssessmentResult" ar
       INNER JOIN "Assessment" a ON a.id = ar."assessmentId"
       INNER JOIN "Subject" sub ON sub.id = a."subjectId"
-      WHERE ar."studentId" = ${student.id}
-        AND a."date" >= ${from}
-        AND a."date" <= ${to}
-      GROUP BY sub.id
-      ORDER BY sub.name ASC
-    `);
+	      WHERE ar."studentId" = ${student.id}
+	        AND a."date" >= ${from}
+	        AND a."date" <= ${to}
+	        ${subjectFilterSql}
+	      GROUP BY sub.id
+	      ORDER BY sub.name ASC
+	    `);
 
     const typeStats = await prisma.$queryRaw<
       Array<{
@@ -121,12 +140,13 @@ export async function GET(
         AVG((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) AS "avgPercent"
       FROM "AssessmentResult" ar
       INNER JOIN "Assessment" a ON a.id = ar."assessmentId"
-      WHERE ar."studentId" = ${student.id}
-        AND a."date" >= ${from}
-        AND a."date" <= ${to}
-      GROUP BY a."type"
-      ORDER BY a."type" ASC
-    `);
+	      WHERE ar."studentId" = ${student.id}
+	        AND a."date" >= ${from}
+	        AND a."date" <= ${to}
+	        ${subjectFilterSql}
+	      GROUP BY a."type"
+	      ORDER BY a."type" ASC
+	    `);
 
     const subjectTrends = await prisma.$queryRaw<
       Array<{
@@ -146,44 +166,48 @@ export async function GET(
       FROM "AssessmentResult" ar
       INNER JOIN "Assessment" a ON a.id = ar."assessmentId"
       INNER JOIN "Subject" sub ON sub.id = a."subjectId"
-      WHERE ar."studentId" = ${student.id}
-        AND a."date" >= ${from}
-        AND a."date" <= ${to}
-      GROUP BY sub.id, sub.name, date_trunc('month', a."date")::date
-      ORDER BY date_trunc('month', a."date")::date ASC, sub.name ASC
-    `);
+	      WHERE ar."studentId" = ${student.id}
+	        AND a."date" >= ${from}
+	        AND a."date" <= ${to}
+	        ${subjectFilterSql}
+	      GROUP BY sub.id, sub.name, date_trunc('month', a."date")::date
+	      ORDER BY date_trunc('month', a."date")::date ASC, sub.name ASC
+	    `);
 
-    const evidence = await prisma.$queryRaw<
-      Array<{
-        assessmentId: string;
-        title: string;
-        type: string;
-        date: Date;
-        subjectId: string;
-        subjectName: string;
-        totalMarks: number;
-        marksObtained: number;
-        percent: number | null;
-      }>
-    >(Prisma.sql`
-      SELECT
-        a.id AS "assessmentId",
-        a.title AS "title",
-        a."type"::text AS "type",
-        a."date"::date AS "date",
-        sub.id AS "subjectId",
-        sub.name AS "subjectName",
-        a."totalMarks" AS "totalMarks",
-        ar."marksObtained" AS "marksObtained",
-        ((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) AS "percent"
-      FROM "AssessmentResult" ar
-      INNER JOIN "Assessment" a ON a.id = ar."assessmentId"
-      INNER JOIN "Subject" sub ON sub.id = a."subjectId"
-      WHERE ar."studentId" = ${student.id}
-        AND a."date" >= ${from}
-        AND a."date" <= ${to}
-      ORDER BY a."date" DESC, a."createdAt" DESC
-    `);
+	    const evidence = await prisma.$queryRaw<
+	      Array<{
+	        assessmentId: string;
+	        title: string;
+	        type: string;
+	        date: Date;
+	        subjectId: string;
+	        subjectName: string;
+	        totalMarks: number;
+	        marksObtained: number;
+	        percent: number | null;
+	        topicScores: unknown | null;
+	      }>
+	    >(Prisma.sql`
+	      SELECT
+	        a.id AS "assessmentId",
+	        a.title AS "title",
+	        a."type"::text AS "type",
+	        a."date"::date AS "date",
+	        sub.id AS "subjectId",
+	        sub.name AS "subjectName",
+	        a."totalMarks" AS "totalMarks",
+	        ar."marksObtained" AS "marksObtained",
+	        ((ar."marksObtained" / NULLIF(a."totalMarks", 0)) * 100) AS "percent",
+	        ar."topicScores" AS "topicScores"
+	      FROM "AssessmentResult" ar
+	      INNER JOIN "Assessment" a ON a.id = ar."assessmentId"
+	      INNER JOIN "Subject" sub ON sub.id = a."subjectId"
+	      WHERE ar."studentId" = ${student.id}
+	        AND a."date" >= ${from}
+	        AND a."date" <= ${to}
+	        ${subjectFilterSql}
+	      ORDER BY a."date" DESC, a."createdAt" DESC
+	    `);
 
     return NextResponse.json({
       filters: {

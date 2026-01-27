@@ -10,3 +10,4 @@
 - T-201: Subject topic taxonomy (admin baseline + teacher-created topics) with CRUD and archiving.
 - T-210: Optional per-question topic tagging in assessment builders (enables topic-level scoring later).
 - T-220: Per-question marks entry for printed assessments (MCQ enforced as 0/full) with automatic `AssessmentResult` totals.
+- T-230: Topic score rollups stored in `AssessmentResult.topicScores` and exposed in performance analytics evidence.
