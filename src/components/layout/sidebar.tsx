@@ -75,6 +75,7 @@ const teacherNavItems: NavItem[] = [
 
 const studentNavItems: NavItem[] = [
   { title: "Dashboard", href: "/student", icon: LayoutDashboard },
+  { title: "Analytics", href: "/student/analytics", icon: TrendingUp },
   { title: "Timetable", href: "/student/timetable", icon: Clock },
   { title: "Attendance", href: "/student/attendance", icon: CheckSquare },
   { title: "Grades", href: "/student/grades", icon: GraduationCap },
