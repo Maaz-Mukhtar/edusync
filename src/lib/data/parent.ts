@@ -533,6 +533,7 @@ export interface ChildGradesData {
   };
   results: {
     id: string;
+    assessmentId: string;
     title: string;
     type: string;
     subject: {
@@ -643,6 +644,7 @@ async function fetchChildGradesInternal(studentId: string): Promise<ChildGradesD
     },
     results: resultsWithPercentage.map((r) => ({
       id: r.id,
+      assessmentId: r.assessmentId,
       title: r.assessment.title,
       type: r.assessment.type,
       subject: {

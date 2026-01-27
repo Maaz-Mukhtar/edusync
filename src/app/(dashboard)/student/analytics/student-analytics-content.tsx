@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { TrendingUp } from "lucide-react";
+import { ExternalLink, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 
 type AnalyticsResponse = {
@@ -59,6 +61,12 @@ function formatMonthLabel(isoDate: string) {
   const date = new Date(isoDate);
   if (!Number.isFinite(date.getTime())) return isoDate;
   return date.toLocaleString(undefined, { month: "short", year: "numeric" });
+}
+
+function formatShortDate(isoDate: string) {
+  const date = new Date(isoDate);
+  if (!Number.isFinite(date.getTime())) return isoDate;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 export default function StudentAnalyticsContent() {
@@ -172,6 +180,12 @@ export default function StudentAnalyticsContent() {
             Analytics
           </h1>
           <p className="text-muted-foreground">Your performance trends and breakdowns.</p>
+          {data ? (
+            <div className="mt-1 text-xs text-muted-foreground">
+              {data.student.section.class.name} - {data.student.section.name} • Range{" "}
+              {formatShortDate(data.filters.from)} → {formatShortDate(data.filters.to)}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -393,6 +407,7 @@ export default function StudentAnalyticsContent() {
                         <TableHead>Assessment</TableHead>
                         <TableHead>Subject</TableHead>
                         <TableHead className="text-right">Score</TableHead>
+                        <TableHead className="w-[120px]"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -410,6 +425,13 @@ export default function StudentAnalyticsContent() {
                             </div>
                             <div className="text-xs text-muted-foreground">{formatPercent(e.percent)}</div>
                           </TableCell>
+                          <TableCell className="text-right">
+                            <Button asChild size="sm" variant="outline">
+                              <Link href={`/student/grades?assessmentId=${encodeURIComponent(e.assessmentId)}`}>
+                                Grades <ExternalLink className="h-3.5 w-3.5" />
+                              </Link>
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -423,4 +445,3 @@ export default function StudentAnalyticsContent() {
     </div>
   );
 }
-
