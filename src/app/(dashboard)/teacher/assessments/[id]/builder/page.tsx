@@ -59,13 +59,33 @@ export default async function BuilderPage({ params }: PageProps) {
     // Note: If Prisma Client hasn't been regenerated after schema changes, `subjectTopic`
     // can be undefined at runtime. This guard prevents a hard crash and keeps the builder usable.
     // Run: `npm run db:generate` and restart dev server.
-    const prismaAny = prisma as any;
-    const rows = (await prismaAny.subjectTopic?.findMany?.({
+    const prismaWithSubjectTopic = prisma as unknown as {
+      subjectTopic?: { findMany?: (args: unknown) => Promise<unknown> };
+    };
+
+    const rows = await prismaWithSubjectTopic.subjectTopic?.findMany?.({
       where: { subjectId: assessment.subject.id },
       select: { id: true, name: true, source: true, status: true },
       orderBy: [{ status: "asc" }, { source: "asc" }, { name: "asc" }],
-    })) as Array<{ id: string; name: string; source: "ADMIN" | "TEACHER"; status: "ACTIVE" | "ARCHIVED" }> | undefined;
-    topics = rows ?? [];
+    });
+
+    topics = Array.isArray(rows)
+      ? rows.filter(
+          (t): t is { id: string; name: string; source: "ADMIN" | "TEACHER"; status: "ACTIVE" | "ARCHIVED" } =>
+            typeof t === "object" &&
+            t !== null &&
+            "id" in t &&
+            typeof (t as { id?: unknown }).id === "string" &&
+            "name" in t &&
+            typeof (t as { name?: unknown }).name === "string" &&
+            "source" in t &&
+            (((t as { source?: unknown }).source as unknown) === "ADMIN" ||
+              ((t as { source?: unknown }).source as unknown) === "TEACHER") &&
+            "status" in t &&
+            (((t as { status?: unknown }).status as unknown) === "ACTIVE" ||
+              ((t as { status?: unknown }).status as unknown) === "ARCHIVED")
+        )
+      : [];
   } catch (e) {
     console.warn("[BuilderPage] Failed to load subject topics. Run `npm run db:generate`.", e);
     topics = [];

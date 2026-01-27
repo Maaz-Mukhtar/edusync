@@ -1,0 +1,57 @@
+
+> edusync@0.1.0 predev
+> npm run db:generate
+
+
+> edusync@0.1.0 db:generate
+> prisma generate
+
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.prisma.
+
+✔ Generated Prisma Client (v7.2.0) to ./node_modules/@prisma/client in 87ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Want to turn off tips and other hints? https://pris.ly/tip-4-nohints
+
+
+> edusync@0.1.0 dev
+> next dev -p 4000
+
+▲ Next.js 16.1.1 (Turbopack)
+- Local:         http://localhost:4000
+- Network:       http://192.168.18.192:4000
+- Environments: .env
+
+✓ Starting...
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+✓ Ready in 522ms
+[DB Pool] New connection. Total: 2, Idle: 0, Waiting: 0
+[DB Pool] New connection. Total: 2, Idle: 0, Waiting: 0
+prisma:query SELECT "public"."School"."id", "public"."School"."name" FROM "public"."School" WHERE ("public"."School"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."TeacherProfile"."id", "public"."TeacherProfile"."userId", "public"."TeacherProfile"."employeeId", "public"."TeacherProfile"."qualification", "public"."TeacherProfile"."joinDate", "public"."TeacherProfile"."specialization" FROM "public"."TeacherProfile" WHERE ("public"."TeacherProfile"."userId" = $1 AND 1=1) LIMIT $2 OFFSET $3
+prisma:query SELECT "public"."User"."id", "public"."User"."firstName", "public"."User"."lastName", "public"."User"."email", "public"."User"."avatar", "public"."User"."role"::text FROM "public"."User" WHERE ("public"."User"."id" = $1 AND 1=1) LIMIT $2 OFFSET $3
+ GET /teacher/online-tests 200 in 2.2s (compile: 141ms, proxy.ts: 35ms, render: 2.1s)
+prisma:query SELECT "public"."SectionTeacher"."id", "public"."SectionTeacher"."sectionId", "public"."SectionTeacher"."teacherId" FROM "public"."SectionTeacher" WHERE "public"."SectionTeacher"."teacherId" = $1 OFFSET $2
+prisma:query SELECT "public"."Section"."id", "public"."Section"."classId", "public"."Section"."name", "public"."Section"."capacity" FROM "public"."Section" WHERE "public"."Section"."id" IN ($1,$2) OFFSET $3
+ GET /api/auth/session 200 in 426ms (compile: 414ms, render: 12ms)
+ GET /api/auth/session 200 in 5ms (compile: 1747µs, render: 3ms)
+prisma:query SELECT "public"."Class"."id", "public"."Class"."schoolId", "public"."Class"."name", "public"."Class"."displayOrder" FROM "public"."Class" WHERE "public"."Class"."id" IN ($1,$2) OFFSET $3
+prisma:query SELECT "public"."SectionSubjectTeacher"."id", "public"."SectionSubjectTeacher"."sectionId", "public"."SectionSubjectTeacher"."subjectId", "public"."SectionSubjectTeacher"."teacherId" FROM "public"."SectionSubjectTeacher" WHERE "public"."SectionSubjectTeacher"."teacherId" = $1 OFFSET $2
+prisma:query SELECT "public"."Section"."id", "public"."Section"."classId", "public"."Section"."name", "public"."Section"."capacity" FROM "public"."Section" WHERE "public"."Section"."id" IN ($1,$2,$3,$4,$5,$6,$7) OFFSET $8
+prisma:query SELECT "public"."Class"."id", "public"."Class"."schoolId", "public"."Class"."name", "public"."Class"."displayOrder" FROM "public"."Class" WHERE "public"."Class"."id" IN ($1,$2,$3,$4) OFFSET $5
+prisma:query SELECT "public"."TeacherSubject"."id", "public"."TeacherSubject"."teacherId", "public"."TeacherSubject"."subjectId" FROM "public"."TeacherSubject" WHERE "public"."TeacherSubject"."teacherId" = $1 OFFSET $2
+prisma:query SELECT "public"."OnlineTest"."id", "public"."OnlineTest"."assessmentId", "public"."OnlineTest"."status"::text, "public"."OnlineTest"."timeLimitMins", "public"."OnlineTest"."instructions", "public"."OnlineTest"."shuffleQuestions", "public"."OnlineTest"."showResults", "public"."OnlineTest"."passingScore", "public"."OnlineTest"."startTime", "public"."OnlineTest"."endTime", "public"."OnlineTest"."createdAt", "public"."OnlineTest"."updatedAt", COALESCE("aggr_selection_0_TestAttempt"."_aggr_count_attempts", 0) AS "_aggr_count_attempts" FROM "public"."OnlineTest" LEFT JOIN (SELECT "public"."TestAttempt"."onlineTestId", COUNT(*) AS "_aggr_count_attempts" FROM "public"."TestAttempt" WHERE 1=1 GROUP BY "public"."TestAttempt"."onlineTestId") AS "aggr_selection_0_TestAttempt" ON ("public"."OnlineTest"."id" = "aggr_selection_0_TestAttempt"."onlineTestId") LEFT JOIN "public"."Assessment" AS "j0" ON ("j0"."id") = ("public"."OnlineTest"."assessmentId") WHERE ("j0"."createdById" = $1 AND ("j0"."id" IS NOT NULL)) ORDER BY "public"."OnlineTest"."createdAt" DESC OFFSET $2
+prisma:query SELECT "public"."Subject"."id", "public"."Subject"."classId", "public"."Subject"."name", "public"."Subject"."code", "public"."Subject"."color" FROM "public"."Subject" WHERE "public"."Subject"."id" IN ($1,$2,$3) OFFSET $4
+prisma:query SELECT "public"."Assessment"."id", "public"."Assessment"."sectionId", "public"."Assessment"."subjectId", "public"."Assessment"."termId", "public"."Assessment"."createdById", "public"."Assessment"."title", "public"."Assessment"."type"::text, "public"."Assessment"."totalMarks", "public"."Assessment"."date", "public"."Assessment"."topics", "public"."Assessment"."description", "public"."Assessment"."createdAt", COALESCE("aggr_selection_0_Question"."_aggr_count_questions", 0) AS "_aggr_count_questions" FROM "public"."Assessment" LEFT JOIN (SELECT "public"."Question"."assessmentId", COUNT(*) AS "_aggr_count_questions" FROM "public"."Question" WHERE 1=1 GROUP BY "public"."Question"."assessmentId") AS "aggr_selection_0_Question" ON ("public"."Assessment"."id" = "aggr_selection_0_Question"."assessmentId") WHERE "public"."Assessment"."id" IN ($1) OFFSET $2
+prisma:query SELECT "public"."Section"."id", "public"."Section"."classId", "public"."Section"."name", "public"."Section"."capacity" FROM "public"."Section" WHERE "public"."Section"."id" IN ($1) OFFSET $2
+prisma:query SELECT "public"."Class"."id", "public"."Class"."schoolId", "public"."Class"."name", "public"."Class"."displayOrder" FROM "public"."Class" WHERE "public"."Class"."id" IN ($1) OFFSET $2
+[DB Pool] New connection. Total: 3, Idle: 1, Waiting: 0
+[DB Pool] New connection. Total: 3, Idle: 1, Waiting: 0
+prisma:query SELECT "public"."Assessment"."id", "public"."Assessment"."sectionId", "public"."Assessment"."subjectId", "public"."Assessment"."termId", "public"."Assessment"."createdById", "public"."Assessment"."title", "public"."Assessment"."type"::text, "public"."Assessment"."totalMarks", "public"."Assessment"."date", "public"."Assessment"."topics", "public"."Assessment"."description", "public"."Assessment"."createdAt" FROM "public"."Assessment" LEFT JOIN "public"."OnlineTest" AS "j0" ON ("j0"."assessmentId") = ("public"."Assessment"."id") WHERE ("public"."Assessment"."createdById" = $1 AND ("j0"."assessmentId" IS NULL)) ORDER BY "public"."Assessment"."date" DESC OFFSET $2
+prisma:query SELECT "public"."Subject"."id", "public"."Subject"."classId", "public"."Subject"."name", "public"."Subject"."code", "public"."Subject"."color" FROM "public"."Subject" WHERE "public"."Subject"."id" IN ($1) OFFSET $2
+prisma:query SELECT "public"."Subject"."id", "public"."Subject"."classId", "public"."Subject"."name", "public"."Subject"."code", "public"."Subject"."color" FROM "public"."Subject" WHERE "public"."Subject"."id" IN ($1) OFFSET $2
+prisma:query SELECT "public"."Section"."id", "public"."Section"."classId", "public"."Section"."name", "public"."Section"."capacity" FROM "public"."Section" WHERE "public"."Section"."id" IN ($1) OFFSET $2
+prisma:query SELECT "public"."Class"."id", "public"."Class"."schoolId", "public"."Class"."name", "public"."Class"."displayOrder" FROM "public"."Class" WHERE "public"."Class"."id" IN ($1) OFFSET $2
