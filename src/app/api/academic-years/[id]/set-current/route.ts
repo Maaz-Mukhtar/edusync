@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { revalidateTag } from "next/cache";
 
 // POST /api/academic-years/[id]/set-current - Set an academic year as current
 export async function POST(
@@ -52,6 +53,12 @@ export async function POST(
         data: { isCurrent: true },
       }),
     ]);
+
+    // Current year affects term resolution used by dashboards/timetables.
+    revalidateTag("teacher-timetable", "max");
+    revalidateTag("student-timetable", "max");
+    revalidateTag("teacher-dashboard", "max");
+    revalidateTag("student-dashboard", "max");
 
     return NextResponse.json({ success: true });
   } catch (error) {

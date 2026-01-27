@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { createOnlineTestSchema } from "@/lib/validations/online-tests";
 import { z } from "zod";
+import { revalidateTeachers } from "@/lib/cache-revalidate";
 
 // GET /api/teacher/online-tests - Get teacher's online tests
 export async function GET(request: NextRequest) {
@@ -164,6 +165,8 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    revalidateTeachers([teacherProfile.id]);
 
     return NextResponse.json({ onlineTest }, { status: 201 });
   } catch (error) {

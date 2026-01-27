@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { revalidateParentsForStudents, revalidateStudents } from "@/lib/cache-revalidate";
 
 const createInvoiceSchema = z.object({
   studentId: z.string().min(1, "Student ID is required"),
@@ -136,6 +137,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    revalidateStudents([validatedData.studentId]);
+    await revalidateParentsForStudents([validatedData.studentId]);
+
     return NextResponse.json({ invoice }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -249,6 +253,10 @@ export async function PUT(request: NextRequest) {
         dueDate: new Date(validatedData.dueDate),
       })),
     });
+
+    const createdStudentIds = newStudentIds.map((s) => s.id);
+    revalidateStudents(createdStudentIds);
+    await revalidateParentsForStudents(createdStudentIds);
 
     return NextResponse.json({
       message: `Successfully created ${invoices.count} invoices`,

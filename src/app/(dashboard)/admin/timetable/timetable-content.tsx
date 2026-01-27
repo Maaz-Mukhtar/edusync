@@ -60,6 +60,16 @@ function termOptionsForYear(data: AdminTimetableBootstrapData, academicYearId: s
   return year?.terms ?? [];
 }
 
+async function readApiJson(res: Response): Promise<{ json: any; text: string }> {
+  const text = await res.text();
+  if (!text) return { json: null, text: "" };
+  try {
+    return { json: JSON.parse(text), text };
+  } catch {
+    return { json: null, text };
+  }
+}
+
 export default function AdminTimetableContent({ data }: { data: AdminTimetableBootstrapData }) {
   const [academicYearId, setAcademicYearId] = useState<string | null>(data.defaultAcademicYearId);
   const [termId, setTermId] = useState<string | null>(data.defaultTermId);
@@ -97,9 +107,14 @@ export default function AdminTimetableContent({ data }: { data: AdminTimetableBo
     setError(null);
     try {
       const res = await fetch(`/api/admin/timetable?classId=${classId}&termId=${termId}`);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Failed to load timetable");
-      setDetails(json);
+      const { json } = await readApiJson(res);
+      if (!json) throw new Error(`Failed to load timetable (HTTP ${res.status})`);
+      if (!res.ok) {
+        const details = typeof json?.details === "string" && json.details ? `: ${json.details}` : "";
+        const code = typeof json?.code === "string" && json.code ? ` (${json.code})` : "";
+        throw new Error((json?.error || `Failed to load timetable (HTTP ${res.status})`) + code + details);
+      }
+      setDetails(json as TimetableDetails);
 
       if (!json.schedule) {
         setGrid({});
@@ -177,8 +192,9 @@ export default function AdminTimetableContent({ data }: { data: AdminTimetableBo
           schedule: scheduleForm,
         }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Failed to create schedule");
+      const { json } = await readApiJson(res);
+      if (!json) throw new Error(`Failed to create schedule (HTTP ${res.status})`);
+      if (!res.ok) throw new Error(json?.error || `Failed to create schedule (HTTP ${res.status})`);
       toast.success("Schedule created");
       await load();
     } catch (e) {
@@ -214,8 +230,9 @@ export default function AdminTimetableContent({ data }: { data: AdminTimetableBo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "saveDraft", classId, termId, entries }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Failed to save draft");
+      const { json } = await readApiJson(res);
+      if (!json) throw new Error(`Failed to save draft (HTTP ${res.status})`);
+      if (!res.ok) throw new Error(json?.error || `Failed to save draft (HTTP ${res.status})`);
       toast.success(`Draft saved (${json.count} slots)`);
       await load();
     } catch (e) {
@@ -234,7 +251,8 @@ export default function AdminTimetableContent({ data }: { data: AdminTimetableBo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "publish", classId, termId }),
       });
-      const json = await res.json();
+      const { json } = await readApiJson(res);
+      if (!json) throw new Error(`Failed to publish (HTTP ${res.status})`);
       if (!res.ok) {
         if (json?.details?.a && json?.details?.b) {
           throw new Error(`Teacher conflict: ${json.details.a.context} overlaps ${json.details.b.context}`);
@@ -259,8 +277,9 @@ export default function AdminTimetableContent({ data }: { data: AdminTimetableBo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "editPublished", classId, termId }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Failed to start editing published timetable");
+      const { json } = await readApiJson(res);
+      if (!json) throw new Error(`Failed to start editing published timetable (HTTP ${res.status})`);
+      if (!res.ok) throw new Error(json?.error || `Failed to start editing published timetable (HTTP ${res.status})`);
       toast.success("Draft created from published timetable");
       await load();
     } catch (e) {
@@ -281,8 +300,9 @@ export default function AdminTimetableContent({ data }: { data: AdminTimetableBo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "copyTerm1ToTerm2", classId, fromTermId: term1.id, toTermId: termId }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Failed to copy timetable");
+      const { json } = await readApiJson(res);
+      if (!json) throw new Error(`Failed to copy timetable (HTTP ${res.status})`);
+      if (!res.ok) throw new Error(json?.error || `Failed to copy timetable (HTTP ${res.status})`);
       toast.success("Copied published Term 1 into this term's draft");
       await load();
     } catch (e) {

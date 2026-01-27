@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { revalidateTag } from "next/cache";
 
 // GET /api/academic-years/[id] - Get a specific academic year
 export async function GET(
@@ -147,6 +148,13 @@ export async function PUT(
         ...(data.isCurrent !== undefined && { isCurrent: data.isCurrent }),
       },
     });
+
+    if (data.isCurrent !== undefined) {
+      revalidateTag("teacher-timetable", "max");
+      revalidateTag("student-timetable", "max");
+      revalidateTag("teacher-dashboard", "max");
+      revalidateTag("student-dashboard", "max");
+    }
 
     return NextResponse.json(academicYear);
   } catch (error) {

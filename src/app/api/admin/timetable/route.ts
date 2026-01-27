@@ -3,6 +3,7 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { addMinutesToTime, parseTimeToMinutes, rangesOverlap } from "@/lib/time";
+import { revalidateSections, revalidateStudents, revalidateTeachers } from "@/lib/cache-revalidate";
 
 const DAYS = [
   { dayOfWeek: 1, label: "Monday" },
@@ -163,119 +164,141 @@ function groupSlotsByTeacherDay(
 }
 
 export async function GET(request: NextRequest) {
-  const schoolId = await getAdminSchoolId();
-  if (!schoolId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const schoolId = await getAdminSchoolId();
+    if (!schoolId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { searchParams } = new URL(request.url);
-  const classId = searchParams.get("classId");
-  const termId = searchParams.get("termId");
-  if (!classId || !termId) {
-    return NextResponse.json({ error: "Missing classId or termId" }, { status: 400 });
-  }
+    const { searchParams } = new URL(request.url);
+    const classId = searchParams.get("classId");
+    const termId = searchParams.get("termId");
+    if (!classId || !termId) {
+      return NextResponse.json({ error: "Missing classId or termId" }, { status: 400 });
+    }
 
-  const cls = await prisma.class.findFirst({
-    where: { id: classId, schoolId },
-    include: {
-      sections: { orderBy: { name: "asc" } },
-      subjects: { orderBy: { name: "asc" } },
-    },
-  });
-  if (!cls) return NextResponse.json({ error: "Class not found" }, { status: 404 });
+    const cls = await prisma.class.findFirst({
+      where: { id: classId, schoolId },
+      include: {
+        sections: { orderBy: { name: "asc" } },
+        subjects: { orderBy: { name: "asc" } },
+      },
+    });
+    if (!cls) return NextResponse.json({ error: "Class not found" }, { status: 404 });
 
-  const term = await prisma.term.findFirst({
-    where: { id: termId, academicYear: { schoolId } },
-    select: { id: true, name: true, startDate: true, endDate: true },
-  });
-  if (!term) return NextResponse.json({ error: "Term not found" }, { status: 404 });
+    const term = await prisma.term.findFirst({
+      where: { id: termId, academicYear: { schoolId } },
+      select: { id: true, name: true, startDate: true, endDate: true },
+    });
+    if (!term) return NextResponse.json({ error: "Term not found" }, { status: 404 });
 
-  const [draft, published] = await Promise.all([
-    prisma.timetable.findFirst({
-      where: { classId, termId, status: "DRAFT" },
-      include: { bellSchedule: { include: { slots: true } }, slots: true },
-    }),
-    prisma.timetable.findFirst({
-      where: { classId, termId, status: "PUBLISHED" },
-      select: { id: true, publishedAt: true },
-    }),
-  ]);
+    const [draft, published] = await Promise.all([
+      prisma.timetable.findFirst({
+        where: { classId, termId, status: "DRAFT" },
+        include: { bellSchedule: { include: { slots: true } }, slots: true },
+      }),
+      prisma.timetable.findFirst({
+        where: { classId, termId, status: "PUBLISHED" },
+        select: { id: true, publishedAt: true },
+      }),
+    ]);
 
-  const schedule = draft?.bellSchedule
-    ? {
-        id: draft.bellSchedule.id,
-        name: draft.bellSchedule.name,
-        startTime: draft.bellSchedule.startTime,
-        slots: draft.bellSchedule.slots
-          .filter((s) => DAYS.some((d) => d.dayOfWeek === s.dayOfWeek))
-          .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.order - b.order)
-          .map((s) => ({
-            id: s.id,
-            dayOfWeek: s.dayOfWeek,
-            order: s.order,
-            type: s.type,
-            label: s.label,
-            startTime: s.startTime,
-            endTime: s.endTime,
-          })),
-      }
-    : null;
-
-  // Map of section -> subject -> assigned teacher
-  const assignments = await prisma.sectionSubjectTeacher.findMany({
-    where: {
-      sectionId: { in: cls.sections.map((s) => s.id) },
-      subjectId: { in: cls.subjects.map((s) => s.id) },
-    },
-    include: { teacher: { include: { user: { select: { firstName: true, lastName: true } } } } },
-  });
-
-  const assignmentMap: Record<string, Record<string, { teacherId: string; teacherName: string }>> = {};
-  for (const a of assignments) {
-    assignmentMap[a.sectionId] ??= {};
-    assignmentMap[a.sectionId][a.subjectId] = {
-      teacherId: a.teacherId,
-      teacherName: `${a.teacher.user.firstName} ${a.teacher.user.lastName}`,
-    };
-  }
-
-  return NextResponse.json({
-    class: { id: cls.id, name: cls.name },
-    term,
-    sections: cls.sections.map((s) => ({ id: s.id, name: s.name })),
-    subjects: cls.subjects.map((s) => ({ id: s.id, name: s.name, code: s.code, color: s.color })),
-    schedule,
-    draft: draft
+    const schedule = draft?.bellSchedule
       ? {
-          id: draft.id,
-          updatedAt: draft.updatedAt,
-          slots: draft.slots.map((slot) => ({
-            id: slot.id,
-            sectionId: slot.sectionId,
-            subjectId: slot.subjectId,
-            dayOfWeek: slot.dayOfWeek,
-            startTime: slot.startTime,
-            endTime: slot.endTime,
-            bellScheduleSlotId: slot.bellScheduleSlotId,
-            room: slot.room,
-          })),
+          id: draft.bellSchedule.id,
+          name: draft.bellSchedule.name,
+          startTime: draft.bellSchedule.startTime,
+          slots: draft.bellSchedule.slots
+            .filter((s) => DAYS.some((d) => d.dayOfWeek === s.dayOfWeek))
+            .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.order - b.order)
+            .map((s) => ({
+              id: s.id,
+              dayOfWeek: s.dayOfWeek,
+              order: s.order,
+              type: s.type,
+              label: s.label,
+              startTime: s.startTime,
+              endTime: s.endTime,
+            })),
         }
-      : null,
-    published: published
-      ? {
-          id: published.id,
-          publishedAt: published.publishedAt,
-        }
-      : null,
-    assignmentMap,
-    days: DAYS,
-  });
+      : null;
+
+    // Map of section -> subject -> assigned teacher
+    const assignments = await prisma.sectionSubjectTeacher.findMany({
+      where: {
+        sectionId: { in: cls.sections.map((s) => s.id) },
+        subjectId: { in: cls.subjects.map((s) => s.id) },
+      },
+      include: { teacher: { include: { user: { select: { firstName: true, lastName: true } } } } },
+    });
+
+    const assignmentMap: Record<string, Record<string, { teacherId: string; teacherName: string }>> = {};
+    for (const a of assignments) {
+      assignmentMap[a.sectionId] ??= {};
+      const firstName = a.teacher?.user?.firstName ?? "";
+      const lastName = a.teacher?.user?.lastName ?? "";
+      assignmentMap[a.sectionId][a.subjectId] = {
+        teacherId: a.teacherId,
+        teacherName: `${firstName} ${lastName}`.trim() || "Unknown Teacher",
+      };
+    }
+
+    return NextResponse.json({
+      class: { id: cls.id, name: cls.name },
+      term,
+      sections: cls.sections.map((s) => ({ id: s.id, name: s.name })),
+      subjects: cls.subjects.map((s) => ({ id: s.id, name: s.name, code: s.code, color: s.color })),
+      schedule,
+      draft: draft
+        ? {
+            id: draft.id,
+            updatedAt: draft.updatedAt,
+            slots: draft.slots.map((slot) => ({
+              id: slot.id,
+              sectionId: slot.sectionId,
+              subjectId: slot.subjectId,
+              dayOfWeek: slot.dayOfWeek,
+              startTime: slot.startTime,
+              endTime: slot.endTime,
+              bellScheduleSlotId: slot.bellScheduleSlotId,
+              room: slot.room,
+            })),
+          }
+        : null,
+      published: published
+        ? {
+            id: published.id,
+            publishedAt: published.publishedAt,
+          }
+        : null,
+      assignmentMap,
+      days: DAYS,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const code = typeof (error as any)?.code === "string" ? (error as any).code : undefined;
+    console.error("Admin timetable GET failed", error);
+    return NextResponse.json(
+      {
+        error: "Failed to load timetable",
+        details: process.env.NODE_ENV !== "production" ? message : undefined,
+        code: process.env.NODE_ENV !== "production" ? code : undefined,
+      },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(request: NextRequest) {
   const schoolId = await getAdminSchoolId();
   if (!schoolId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await request.json();
-  const action = body?.action as string | undefined;
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const action = (body as any)?.action as string | undefined;
 
   try {
     if (action === "createSchedule") {
@@ -651,6 +674,17 @@ export async function POST(request: NextRequest) {
         });
         return p;
       });
+
+      // Invalidate affected timetable + dashboards across portals
+      const sectionIds = Array.from(new Set(draft.slots.map((s) => s.sectionId)));
+      const teacherIds = Array.from(new Set(draft.slots.map((s) => s.teacherId).filter(Boolean))) as string[];
+      revalidateSections(sectionIds);
+      revalidateTeachers(teacherIds);
+      const students = await prisma.studentProfile.findMany({
+        where: { sectionId: { in: sectionIds } },
+        select: { id: true },
+      });
+      revalidateStudents(students.map((s) => s.id));
 
       return NextResponse.json({ ok: true, publishedId: published.id });
     }

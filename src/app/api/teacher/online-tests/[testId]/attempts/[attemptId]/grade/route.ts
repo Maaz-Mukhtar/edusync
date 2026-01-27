@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { gradeAnswerSchema } from "@/lib/validations/online-tests";
 import { z } from "zod";
+import { revalidateParentsForStudents, revalidateStudents, revalidateTeachers } from "@/lib/cache-revalidate";
 
 // PATCH /api/teacher/online-tests/[testId]/attempts/[attemptId]/grade - Grade answers
 export async function PATCH(
@@ -179,6 +180,10 @@ export async function PATCH(
         },
       });
     }
+
+    revalidateTeachers([teacherProfile.id]);
+    revalidateStudents([attempt.studentId]);
+    await revalidateParentsForStudents([attempt.studentId]);
 
     return NextResponse.json({
       attempt: {

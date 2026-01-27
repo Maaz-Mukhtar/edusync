@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { hash } from "bcryptjs";
+import { revalidateTag } from "next/cache";
 
 const linkExistingSchema = z.object({
   action: z.literal("linkExisting"),
@@ -98,6 +99,8 @@ export async function POST(
         skipDuplicates: true,
       });
 
+      revalidateTag(`parent-${parent.parentProfile.id}`, "max");
+
       return NextResponse.json({ success: true, mode: "linkedExisting" });
     }
 
@@ -138,7 +141,7 @@ export async function POST(
           },
         });
 
-        return { mode: "linkedExisting", parentUserId: existingParent.id };
+        return { mode: "linkedExisting", parentUserId: existingParent.id, parentProfileId: existingParent.parentProfile.id };
       }
 
       const passwordHash = await hash(data.parent.password, 10);
@@ -169,8 +172,10 @@ export async function POST(
         },
       });
 
-      return { mode: "createdAndLinked", parentUserId: created.id };
+      return { mode: "createdAndLinked", parentUserId: created.id, parentProfileId: created.parentProfile!.id };
     });
+
+    revalidateTag(`parent-${result.parentProfileId}`, "max");
 
     return NextResponse.json({ success: true, ...result }, { status: 201 });
   } catch (error) {
@@ -221,6 +226,8 @@ export async function DELETE(
       where: { parentId: parent.parentProfile.id, studentId: studentProfileId },
     });
 
+    revalidateTag(`parent-${parent.parentProfile.id}`, "max");
+
     return NextResponse.json({ success: true });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -233,4 +240,3 @@ export async function DELETE(
     return NextResponse.json({ error: "Failed to unlink parent" }, { status: 500 });
   }
 }
-

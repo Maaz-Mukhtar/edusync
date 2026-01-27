@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { parseDateInputValue } from "@/lib/date";
+import { revalidateParentsForStudents, revalidateStudents, revalidateTeachers } from "@/lib/cache-revalidate";
 
 const markAttendanceSchema = z.object({
   sectionId: z.string().min(1, "Section is required"),
@@ -298,7 +299,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/teacher/attendance - Mark attendance
+// POST /api/teacher/attendance - Mark attendance for a section/date
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
@@ -319,22 +320,21 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const validatedData = markAttendanceSchema.parse(body);
+    const validated = markAttendanceSchema.parse(body);
 
-    // Verify teacher has access to this section (class teacher OR subject teacher)
+    const attendanceDate = parseDateInputValue(validated.date);
+    if (!attendanceDate) {
+      return NextResponse.json({ error: "Invalid date format" }, { status: 400 });
+    }
+
+    // Verify teacher has access to this section
     const [hasClassTeacherAccess, hasSubjectTeacherAccess] = await Promise.all([
       prisma.sectionTeacher.findFirst({
-        where: {
-          sectionId: validatedData.sectionId,
-          teacherId: teacherProfile.id,
-        },
+        where: { teacherId: teacherProfile.id, sectionId: validated.sectionId },
         select: { id: true },
       }),
       prisma.sectionSubjectTeacher.findFirst({
-        where: {
-          sectionId: validatedData.sectionId,
-          teacherId: teacherProfile.id,
-        },
+        where: { teacherId: teacherProfile.id, sectionId: validated.sectionId },
         select: { id: true },
       }),
     ]);
@@ -343,34 +343,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Access denied to this section" }, { status: 403 });
     }
 
-    const attendanceDate = parseDateInputValue(validatedData.date);
-    if (!attendanceDate) {
-      return NextResponse.json({ error: "Invalid date format" }, { status: 400 });
+    // Only allow records for students in this section
+    const students = await prisma.studentProfile.findMany({
+      where: { sectionId: validated.sectionId },
+      select: { id: true },
+    });
+    const validStudentIds = new Set(students.map((s) => s.id));
+    const records = validated.records.filter((r) => validStudentIds.has(r.studentId));
+    if (records.length === 0) {
+      return NextResponse.json({ error: "No valid student records provided" }, { status: 400 });
     }
 
-    // Delete existing attendance for this date and section (to allow updates)
+    // Replace attendance for these students on this date
     await prisma.attendance.deleteMany({
       where: {
-        sectionId: validatedData.sectionId,
+        studentId: { in: records.map((r) => r.studentId) },
         date: attendanceDate,
       },
     });
 
-    // Create attendance records
-    const attendanceRecords = await prisma.attendance.createMany({
-      data: validatedData.records.map((record) => ({
-        studentId: record.studentId,
-        sectionId: validatedData.sectionId,
+    const created = await prisma.attendance.createMany({
+      data: records.map((r) => ({
+        studentId: r.studentId,
+        sectionId: validated.sectionId,
         date: attendanceDate,
-        status: record.status,
-        remarks: record.remarks || null,
+        status: r.status,
+        remarks: r.remarks || null,
         markedBy: teacherProfile.id,
       })),
     });
 
+    const studentIds = records.map((r) => r.studentId);
+    revalidateTeachers([teacherProfile.id]);
+    revalidateStudents(studentIds);
+    await revalidateParentsForStudents(studentIds);
+
     return NextResponse.json({
-      message: `Attendance marked for ${attendanceRecords.count} students`,
-      count: attendanceRecords.count,
+      message: `Attendance saved for ${created.count} students`,
+      count: created.count,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -379,10 +389,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    console.error("Error marking attendance:", error);
-    return NextResponse.json(
-      { error: "Failed to mark attendance" },
-      { status: 500 }
-    );
+    console.error("Error saving teacher attendance:", error);
+    return NextResponse.json({ error: "Failed to save attendance" }, { status: 500 });
   }
 }

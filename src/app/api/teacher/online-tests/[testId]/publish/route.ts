@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { revalidateTeachers } from "@/lib/cache-revalidate";
 
 // POST /api/teacher/online-tests/[testId]/publish - Publish a test
 export async function POST(
@@ -101,6 +102,8 @@ export async function POST(
         },
       },
     });
+
+    revalidateTeachers([teacherProfile.id]);
 
     return NextResponse.json({
       onlineTest: {

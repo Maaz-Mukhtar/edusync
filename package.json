@@ -13,8 +13,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:headstart": "tsx prisma/seed-headstart.ts",
     "db:studio": "prisma studio",
-    "test:perf": "npx playwright test tests/performance.spec.ts",
-    "test:perf:ui": "npx playwright test tests/performance.spec.ts --ui",
+    "test:perf": "PLAYWRIGHT_SCHOOL_SUBDOMAIN=sns npx playwright test tests/performance.spec.ts",
+    "test:perf:ui": "PLAYWRIGHT_SCHOOL_SUBDOMAIN=sns npx playwright test tests/performance.spec.ts --ui",
     "benchmark": "bash scripts/benchmark-branches.sh"
   },
   "prisma": {

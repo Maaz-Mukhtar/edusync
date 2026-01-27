@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { hash } from "bcryptjs";
 import { z } from "zod";
+import { revalidateSections, revalidateTeachers } from "@/lib/cache-revalidate";
 
 const createStudentSchema = z.object({
   email: z.string().email().optional().nullable(),
@@ -243,6 +244,23 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    // Invalidate teacher caches for all teachers attached to this section (counts + student lists)
+    const [classTeachers, subjectTeachers] = await Promise.all([
+      prisma.sectionTeacher.findMany({
+        where: { sectionId: validatedData.sectionId },
+        select: { teacherId: true },
+      }),
+      prisma.sectionSubjectTeacher.findMany({
+        where: { sectionId: validatedData.sectionId },
+        select: { teacherId: true },
+      }),
+    ]);
+    revalidateTeachers([
+      ...classTeachers.map((t) => t.teacherId),
+      ...subjectTeachers.map((t) => t.teacherId),
+    ]);
+    revalidateSections([validatedData.sectionId]);
 
     return NextResponse.json({ student }, { status: 201 });
   } catch (error) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { revalidateTag } from "next/cache";
 
 const createLinkSchema = z.object({
   parentId: z.string().min(1, "Parent ID is required"),
@@ -171,6 +172,8 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    revalidateTag(`parent-${validatedData.parentId}`, "max");
 
     return NextResponse.json({ link }, { status: 201 });
   } catch (error) {
