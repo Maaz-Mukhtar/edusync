@@ -36,8 +36,10 @@ import {
   GripVertical,
   Save,
   Printer,
+  ListChecks,
   X,
 } from "lucide-react";
+import { SubjectTopicsDialog } from "@/components/topics/subject-topics-dialog";
 
 type QuestionType = "MCQ" | "SHORT_ANSWER";
 
@@ -96,6 +98,7 @@ export default function QuestionBuilder({ initialData }: QuestionBuilderProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [topicsDialogOpen, setTopicsDialogOpen] = useState(false);
 
   // Question dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -291,6 +294,10 @@ export default function QuestionBuilder({ initialData }: QuestionBuilderProps) {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setTopicsDialogOpen(true)}>
+            <ListChecks className="h-4 w-4 mr-2" />
+            Topics
+          </Button>
           <Button variant="outline" asChild>
             <Link href={`/teacher/assessments/${initialData.id}`}>
               <Printer className="h-4 w-4 mr-2" />
@@ -299,6 +306,13 @@ export default function QuestionBuilder({ initialData }: QuestionBuilderProps) {
           </Button>
         </div>
       </div>
+
+      <SubjectTopicsDialog
+        open={topicsDialogOpen}
+        onOpenChange={setTopicsDialogOpen}
+        subjectId={initialData.subject.id}
+        mode="teacher"
+      />
 
       {/* Alerts */}
       {success && (
