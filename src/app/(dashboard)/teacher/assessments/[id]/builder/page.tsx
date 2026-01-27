@@ -51,6 +51,26 @@ export default async function BuilderPage({ params }: PageProps) {
     notFound();
   }
 
+  let topics: Array<{ id: string; name: string; source: "ADMIN" | "TEACHER"; status: "ACTIVE" | "ARCHIVED" }> = [];
+  try {
+    // Include ACTIVE + ARCHIVED topics so historical questions can still render.
+    // Archived topics are disabled in the question builder when tagging new questions.
+    //
+    // Note: If Prisma Client hasn't been regenerated after schema changes, `subjectTopic`
+    // can be undefined at runtime. This guard prevents a hard crash and keeps the builder usable.
+    // Run: `npm run db:generate` and restart dev server.
+    const prismaAny = prisma as any;
+    const rows = (await prismaAny.subjectTopic?.findMany?.({
+      where: { subjectId: assessment.subject.id },
+      select: { id: true, name: true, source: true, status: true },
+      orderBy: [{ status: "asc" }, { source: "asc" }, { name: "asc" }],
+    })) as Array<{ id: string; name: string; source: "ADMIN" | "TEACHER"; status: "ACTIVE" | "ARCHIVED" }> | undefined;
+    topics = rows ?? [];
+  } catch (e) {
+    console.warn("[BuilderPage] Failed to load subject topics. Run `npm run db:generate`.", e);
+    topics = [];
+  }
+
   const initialData = {
     id: assessment.id,
     title: assessment.title,
@@ -69,15 +89,7 @@ export default async function BuilderPage({ params }: PageProps) {
     },
     hasOnlineTest: !!assessment.onlineTest,
     onlineTestStatus: assessment.onlineTest?.status || null,
-    // Include ACTIVE + ARCHIVED topics so historical questions can still render.
-    // Archived topics are disabled in the question builder when tagging new questions.
-    topics: (
-      await prisma.subjectTopic.findMany({
-        where: { subjectId: assessment.subject.id },
-        select: { id: true, name: true, source: true, status: true },
-        orderBy: [{ status: "asc" }, { source: "asc" }, { name: "asc" }],
-      })
-    ).map((t) => ({ id: t.id, name: t.name, source: t.source, status: t.status })),
+    topics,
     questions: assessment.questions.map((q) => ({
       id: q.id,
       type: q.type as "MCQ" | "SHORT_ANSWER",
