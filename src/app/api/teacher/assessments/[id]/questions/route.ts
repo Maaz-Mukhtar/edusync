@@ -35,6 +35,10 @@ export async function GET(
         id: assessmentId,
         createdById: teacherProfile.id,
       },
+      select: {
+        id: true,
+        subjectId: true,
+      },
     });
 
     if (!assessment) {
@@ -56,6 +60,7 @@ export async function GET(
         id: q.id,
         type: q.type,
         questionText: q.questionText,
+        topicId: q.topicId,
         marks: q.marks,
         orderIndex: q.orderIndex,
         explanation: q.explanation,
@@ -127,6 +132,16 @@ export async function POST(
     const body = await request.json();
     const validatedData = createQuestionSchema.parse(body);
 
+    if (validatedData.topicId) {
+      const topic = await prisma.subjectTopic.findFirst({
+        where: { id: validatedData.topicId, subjectId: assessment.subjectId, status: "ACTIVE" },
+        select: { id: true },
+      });
+      if (!topic) {
+        return NextResponse.json({ error: "Invalid topicId for this subject" }, { status: 400 });
+      }
+    }
+
     // Get the highest order index for this assessment
     const maxOrderQuestion = await prisma.question.findFirst({
       where: { assessmentId },
@@ -140,6 +155,7 @@ export async function POST(
         assessmentId,
         type: validatedData.type,
         questionText: validatedData.questionText,
+        topicId: validatedData.topicId ?? null,
         marks: validatedData.marks,
         orderIndex: nextOrderIndex,
         explanation: validatedData.explanation || null,
@@ -165,6 +181,7 @@ export async function POST(
         id: question.id,
         type: question.type,
         questionText: question.questionText,
+        topicId: question.topicId,
         marks: question.marks,
         orderIndex: question.orderIndex,
         explanation: question.explanation,

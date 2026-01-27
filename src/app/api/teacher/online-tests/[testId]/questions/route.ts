@@ -37,6 +37,7 @@ export async function GET(
           createdById: teacherProfile.id,
         },
       },
+      select: { id: true, assessmentId: true, assessment: { select: { subjectId: true } } },
     });
 
     if (!onlineTest) {
@@ -58,6 +59,7 @@ export async function GET(
         id: q.id,
         type: q.type,
         questionText: q.questionText,
+        topicId: q.topicId,
         marks: q.marks,
         orderIndex: q.orderIndex,
         explanation: q.explanation,
@@ -111,6 +113,7 @@ export async function POST(
           createdById: teacherProfile.id,
         },
       },
+      select: { id: true, assessmentId: true, status: true, assessment: { select: { subjectId: true } } },
     });
 
     if (!onlineTest) {
@@ -128,6 +131,16 @@ export async function POST(
     const body = await request.json();
     const validatedData = createQuestionSchema.parse(body);
 
+    if (validatedData.topicId) {
+      const topic = await prisma.subjectTopic.findFirst({
+        where: { id: validatedData.topicId, subjectId: onlineTest.assessment.subjectId, status: "ACTIVE" },
+        select: { id: true },
+      });
+      if (!topic) {
+        return NextResponse.json({ error: "Invalid topicId for this subject" }, { status: 400 });
+      }
+    }
+
     // Get the highest order index for this test
     const maxOrderQuestion = await prisma.question.findFirst({
       where: { assessmentId: onlineTest.assessmentId },
@@ -141,6 +154,7 @@ export async function POST(
         assessmentId: onlineTest.assessmentId,
         type: validatedData.type,
         questionText: validatedData.questionText,
+        topicId: validatedData.topicId ?? null,
         marks: validatedData.marks,
         orderIndex: nextOrderIndex,
         explanation: validatedData.explanation || null,
@@ -166,6 +180,7 @@ export async function POST(
         id: question.id,
         type: question.type,
         questionText: question.questionText,
+        topicId: question.topicId,
         marks: question.marks,
         orderIndex: question.orderIndex,
         explanation: question.explanation,

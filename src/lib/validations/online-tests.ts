@@ -53,6 +53,7 @@ export const questionOptionSchema = z.object({
 export const createMCQQuestionSchema = z.object({
   type: z.literal("MCQ"),
   questionText: z.string().min(1, "Question text is required").max(5000),
+  topicId: z.string().min(1).optional().nullable(),
   marks: z.number().positive("Marks must be positive"),
   orderIndex: z.number().int().min(0).optional(),
   explanation: z.string().max(2000).optional().nullable(),
@@ -67,6 +68,7 @@ export const createMCQQuestionSchema = z.object({
 export const createShortAnswerQuestionSchema = z.object({
   type: z.literal("SHORT_ANSWER"),
   questionText: z.string().min(1, "Question text is required").max(5000),
+  topicId: z.string().min(1).optional().nullable(),
   marks: z.number().positive("Marks must be positive"),
   orderIndex: z.number().int().min(0).optional(),
   explanation: z.string().max(2000).optional().nullable(),
@@ -79,6 +81,7 @@ export const createQuestionSchema = z.discriminatedUnion("type", [
 
 export const updateQuestionSchema = z.object({
   questionText: z.string().min(1, "Question text is required").max(5000).optional(),
+  topicId: z.string().min(1).optional().nullable(),
   marks: z.number().positive("Marks must be positive").optional(),
   orderIndex: z.number().int().min(0).optional(),
   explanation: z.string().max(2000).optional().nullable(),

@@ -364,6 +364,7 @@ model SubjectTopic {
   parent     SubjectTopic?  @relation("TopicTree", fields: [parentTopicId], references: [id])
   children   SubjectTopic[] @relation("TopicTree")
   createdBy  TeacherProfile? @relation(fields: [createdByTeacherId], references: [id], onDelete: SetNull)
+  questions  Question[]
 
   @@unique([subjectId, nameNormalized])
   @@index([subjectId])
@@ -811,6 +812,7 @@ model AssessmentFile {
 model Question {
   id           String       @id @default(cuid())
   assessmentId String // Questions belong to Assessment
+  topicId      String?
   type         QuestionType
   questionText String       @db.Text
   marks        Float
@@ -820,10 +822,12 @@ model Question {
   updatedAt    DateTime     @updatedAt
 
   assessment Assessment       @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  topic      SubjectTopic?   @relation(fields: [topicId], references: [id], onDelete: SetNull)
   options    QuestionOption[] // For MCQ questions
   answers    StudentAnswer[]
 
   @@index([assessmentId])
+  @@index([topicId])
   @@index([orderIndex])
 }
 
