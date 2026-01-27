@@ -128,6 +128,12 @@ function formatMonthLabel(isoDate: string) {
   return date.toLocaleString(undefined, { month: "short", year: "numeric" });
 }
 
+function formatShortDate(isoDate: string) {
+  const date = new Date(isoDate);
+  if (!Number.isFinite(date.getTime())) return isoDate;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
 function safeRate(numerator: number, denominator: number) {
   if (!denominator) return null;
   return (numerator / denominator) * 100;
@@ -518,8 +524,12 @@ export function PerformanceDashboard({
 	                                <Badge variant={s.medianPercent === null ? "secondary" : "outline"}>
 	                                  {formatPercent(s.medianPercent)}
 	                                </Badge>
-	                                <div className="mt-1 text-[11px] leading-tight text-muted-foreground">
-	                                  {s.bucketBelow50}-{s.bucket50to69}-{s.bucket70to84}-{s.bucket85plus}
+	                                <div
+	                                  className="mt-1 text-[11px] leading-tight text-muted-foreground"
+	                                  title="Buckets: <50, 50–69, 70–84, 85+"
+	                                >
+	                                  {"<"}50:{s.bucketBelow50} • 50–69:{s.bucket50to69} • 70–84:{s.bucket70to84} •
+	                                  85+:{s.bucket85plus}
 	                                </div>
 	                              </TableCell>
 	                              <TableCell className="text-right">{s.resultCount}</TableCell>
@@ -564,14 +574,18 @@ export function PerformanceDashboard({
                 ) : (
                   <>
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="font-medium">
-                          {sectionDetail.section.class.name} - {sectionDetail.section.name}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {sectionDetail.section.studentCount} students • {sectionDetail.overall.assessmentCount} assessments • {sectionDetail.overall.resultCount} results
-                        </div>
-                      </div>
+	                      <div>
+	                        <div className="font-medium">
+	                          {sectionDetail.section.class.name} - {sectionDetail.section.name}
+	                        </div>
+	                        <div className="text-xs text-muted-foreground">
+	                          {sectionDetail.section.studentCount} students • {sectionDetail.overall.assessmentCount} assessments • {sectionDetail.overall.resultCount} results
+	                        </div>
+	                        <div className="text-xs text-muted-foreground">
+	                          Range {formatShortDate(sectionDetail.filters.from)} →{" "}
+	                          {formatShortDate(sectionDetail.filters.to)}
+	                        </div>
+	                      </div>
 	                      <Badge variant={sectionDetail.overall.avgPercent === null ? "secondary" : "default"}>
 	                        Avg {formatPercent(sectionDetail.overall.avgPercent)} • Median{" "}
 	                        {formatPercent(sectionDetail.overall.medianPercent)}
@@ -841,14 +855,18 @@ export function PerformanceDashboard({
                 ) : (
                   <>
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="font-medium">
-                          {attendanceDetail.section.class.name} - {attendanceDetail.section.name}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {attendanceDetail.section.studentCount} students • {attendanceDetail.overall.totalMarked} marked
-                        </div>
-                      </div>
+	                      <div>
+	                        <div className="font-medium">
+	                          {attendanceDetail.section.class.name} - {attendanceDetail.section.name}
+	                        </div>
+	                        <div className="text-xs text-muted-foreground">
+	                          {attendanceDetail.section.studentCount} students • {attendanceDetail.overall.totalMarked} marked
+	                        </div>
+	                        <div className="text-xs text-muted-foreground">
+	                          Range {formatShortDate(attendanceDetail.filters.from)} →{" "}
+	                          {formatShortDate(attendanceDetail.filters.to)}
+	                        </div>
+	                      </div>
                       <Badge
                         variant={
                           attendanceDetail.overall.totalMarked === 0 ? "secondary" : "default"

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -27,10 +28,27 @@ interface GradesContentProps {
 }
 
 export default function GradesContent({ data }: GradesContentProps) {
-  const [filterSubject, setFilterSubject] = useState<string>("all");
-  const [filterType, setFilterType] = useState<string>("all");
-
+  const searchParams = useSearchParams();
   const { results, subjectWiseStats, overallStats } = data;
+  const highlightAssessmentId = searchParams.get("assessmentId");
+
+  const [filterSubject, setFilterSubject] = useState<string>(() => {
+    const assessmentId = searchParams.get("assessmentId");
+    if (assessmentId) {
+      const match = results.find((r) => r.assessmentId === assessmentId);
+      if (match) return match.subject.id;
+    }
+    return searchParams.get("subjectId") ?? "all";
+  });
+
+  const [filterType, setFilterType] = useState<string>(() => {
+    const assessmentId = searchParams.get("assessmentId");
+    if (assessmentId) {
+      const match = results.find((r) => r.assessmentId === assessmentId);
+      if (match) return match.type;
+    }
+    return searchParams.get("type") ?? "all";
+  });
 
   // Filter results
   const filteredResults = results.filter((r) => {
@@ -38,6 +56,13 @@ export default function GradesContent({ data }: GradesContentProps) {
     if (filterType !== "all" && r.type !== filterType) return false;
     return true;
   });
+
+  useEffect(() => {
+    if (!highlightAssessmentId) return;
+    const el = document.getElementById(`assessment-${highlightAssessmentId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightAssessmentId, filteredResults.length]);
 
   // Get unique subjects and types for filters
   const subjects = Array.from(
@@ -261,12 +286,18 @@ export default function GradesContent({ data }: GradesContentProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredResults.map((result) => (
-                  <TableRow key={result.id}>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium">{result.title}</p>
-                        {result.remarks && (
+	                {filteredResults.map((result) => (
+	                  <TableRow
+	                    key={result.id}
+	                    id={result.assessmentId ? `assessment-${result.assessmentId}` : undefined}
+	                    className={cn(
+	                      highlightAssessmentId === result.assessmentId ? "bg-muted/50" : undefined
+	                    )}
+	                  >
+	                    <TableCell>
+	                      <div>
+	                        <p className="font-medium">{result.title}</p>
+	                        {result.remarks && (
                           <p className="text-xs text-muted-foreground truncate max-w-[200px]">
                             {result.remarks}
                           </p>

@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { TrendingUp } from "lucide-react";
+import { ExternalLink, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import type { ChildInfo } from "@/lib/data/parent";
 
@@ -61,6 +63,12 @@ function formatMonthLabel(isoDate: string) {
   const date = new Date(isoDate);
   if (!Number.isFinite(date.getTime())) return isoDate;
   return date.toLocaleString(undefined, { month: "short", year: "numeric" });
+}
+
+function formatShortDate(isoDate: string) {
+  const date = new Date(isoDate);
+  if (!Number.isFinite(date.getTime())) return isoDate;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 export default function ParentAnalyticsContent({
@@ -191,6 +199,13 @@ export default function ParentAnalyticsContent({
             Analytics
           </h1>
           <p className="text-muted-foreground">Performance trends for your child.</p>
+          {data ? (
+            <div className="mt-1 text-xs text-muted-foreground">
+              {data.student.firstName} {data.student.lastName} • {data.student.section.class.name} -{" "}
+              {data.student.section.name} • Range {formatShortDate(data.filters.from)} →{" "}
+              {formatShortDate(data.filters.to)}
+            </div>
+          ) : null}
         </div>
 
         <div className="w-[260px]">
@@ -433,6 +448,7 @@ export default function ParentAnalyticsContent({
                         <TableHead>Assessment</TableHead>
                         <TableHead>Subject</TableHead>
                         <TableHead className="text-right">Score</TableHead>
+                        <TableHead className="w-[120px]"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -450,6 +466,15 @@ export default function ParentAnalyticsContent({
                             </div>
                             <div className="text-xs text-muted-foreground">{formatPercent(e.percent)}</div>
                           </TableCell>
+                          <TableCell className="text-right">
+                            <Button asChild size="sm" variant="outline">
+                              <Link
+                                href={`/parent/grades?child=${encodeURIComponent(selectedStudentId)}&assessmentId=${encodeURIComponent(e.assessmentId)}`}
+                              >
+                                Grades <ExternalLink className="h-3.5 w-3.5" />
+                              </Link>
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -463,4 +488,3 @@ export default function ParentAnalyticsContent({
     </div>
   );
 }
-
