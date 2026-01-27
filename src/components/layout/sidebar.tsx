@@ -88,6 +88,7 @@ const studentNavItems: NavItem[] = [
 
 const parentNavItems: NavItem[] = [
   { title: "Dashboard", href: "/parent", icon: LayoutDashboard },
+  { title: "Analytics", href: "/parent/analytics", icon: TrendingUp },
   { title: "Timetable", href: "/parent/timetable", icon: Clock },
   { title: "Attendance", href: "/parent/attendance", icon: CheckSquare },
   { title: "Grades", href: "/parent/grades", icon: GraduationCap },
